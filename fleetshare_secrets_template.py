@@ -1,5 +1,5 @@
 #: Path to csv from fleet
-CSV_PATH =''
+CSV_PATH = ''
 #: AGOL username
 USERNAME = ''
 #: AGOL password
