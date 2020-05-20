@@ -1,8 +1,12 @@
 import datetime
 import os
+import sys
+
+from pathlib import Path
 
 import arcgis
 import arcpy
+import pysftp
 
 import fleetshare_secrets as secrets
 
@@ -10,22 +14,51 @@ source_path = secrets.CSV_PATH
 
 feature_service_name = secrets.FEATURE_SERVICE_NAME
 
+temp_csv_dir = os.path.join(arcpy.env.scratchFolder, 'fleet')
+os.mkdir(temp_csv_dir)
 temp_fc_path = os.path.join(arcpy.env.scratchGDB, feature_service_name)
 sddraft_path = os.path.join(arcpy.env.scratchFolder, f'{feature_service_name}.sddraft')
 sd_path = sddraft_path[:-5]
 
-paths = [temp_fc_path, sddraft_path, sd_path]
+paths = [temp_csv_dir, temp_fc_path, sddraft_path, sd_path]
 for item in paths:
     if arcpy.Exists(item):
         print(f'Deleting {item} prior to use...')
         arcpy.Delete_management(item)
 
+#: Download all the files in the upload folder on sftp to temp_csv_dir
+with pysftp.Connection(secrets.SFTP_HOST, username=secrets.SFTP_USERNAME, password=secrets.SFTP_PASSWORD) as sftp:
+    sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
+
+#: get list of csvs
+temp_dir_path = Path(temp_csv_dir)
+csvs = sorted(temp_dir_path.glob('vehicle_data_*.csv'))
+
+#: The last of the sorted list of csvs should be the latest
+latest_csv = csvs[-1]
+
+#: Pull the date out of vehicle_data_yyyymmdd.csv
+date_string = latest_csv.rsplit('_')[-1].split('.')[0]
+try:
+    csv_datetime = datetime.date(int(date_string[:4]), int(date_string[4:6]), int(date_string[6:]))
+except ValueError as e:
+    raise e
+
+#: Only continue if the latest is within three days
+today = datetime.date.today()
+last_three_days = [today - datetime.timedelta(days=i) for i in range(4)]
+if csv_datetime not in last_three_days:
+    print(f'Latest csv "{latest_csv} not within three days of today ({today})')
+    sys.exit(f'Latest csv "{latest_csv} not within three days of today ({today})')
+
+source_path = latest_csv
+
 print(f'Converting {source_path} to feature class {temp_fc_path}...')
 result = arcpy.management.XYTableToPoint(source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', coordinate_system=arcpy.SpatialReference(4326))
 
 #: Overwrite existing AGOL service
-print(f'Connecting to AGOL as {secrets.USERNAME}...')
-gis = arcgis.gis.GIS('https://www.arcgis.com', secrets.USERNAME, secrets.PASSWORD)
+print(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
+gis = arcgis.gis.GIS('https://www.arcgis.com', secrets.AGOL_USERNAME, secrets.AGOL_PASSWORD)
 sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
 #: Get project references
