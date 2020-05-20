@@ -1,6 +1,5 @@
 import datetime
-
-from pathlib import Path
+import os
 
 import arcgis
 import arcpy
@@ -9,12 +8,10 @@ import fleetshare_secrets as secrets
 
 source_path = secrets.CSV_PATH
 
-feature_service_name = 'vehicle_locations'
+feature_service_name = secrets.FEATURE_SERVICE_NAME
 
-scratch_path = Path(arcpy.env.scratchGDB)
-scratch_folder = Path(arcpy.env.scratchFolder)
-temp_fc_path = str(scratch_path / feature_service_name)
-sddraft_path = str(scratch_folder / f'{feature_service_name}.sddraft')
+temp_fc_path = os.path.join(arcpy.env.scratchGDB, feature_service_name)
+sddraft_path = os.path.join(arcpy.env.scratchFolder, f'{feature_service_name}.sddraft')
 sd_path = sddraft_path[:-5]
 
 paths = [temp_fc_path, sddraft_path, sd_path]
@@ -24,13 +21,7 @@ for item in paths:
         arcpy.Delete_management(item)
 
 print(f'Converting {source_path} to feature class {temp_fc_path}...')
-result = arcpy.management.XYTableToPoint(source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE')
-
-print(result.getMessages())
-print(arcpy.Exists(temp_fc_path))
-description = arcpy.Describe(temp_fc_path)
-for f in description.fields:
-    print(f.name)
+result = arcpy.management.XYTableToPoint(source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', coordinate_system=arcpy.SpatialReference(4326))
 
 #: Overwrite existing AGOL service
 print(f'Connecting to AGOL as {secrets.USERNAME}...')
@@ -46,9 +37,7 @@ for layer in fleet_map.listLayers():
     print(f'Removing {layer} from {fleet_map.name}...')
     fleet_map.removeLayer(layer)
 
-print(arcpy.management.GetCount(temp_fc_path))
-
-print(f'Adding {temp_fc_path} as layer to {fleet_map}...')
+print(f'Adding {temp_fc_path} as layer to {fleet_map.name}...')
 layer = fleet_map.addDataFromPath(temp_fc_path)
 project.save()
 
