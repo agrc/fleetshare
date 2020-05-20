@@ -2,6 +2,8 @@
 CSV_PATH = ''
 #: Name of published hosted feature service on AGOL 
 FEATURE_SERVICE_NAME = ''
+#: SFTP host (fqdn or IP)
+SFTP_HOST = ''
 #: SFTP username
 SFTP_USERNAME = ''
 #: SFTP password
