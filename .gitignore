@@ -1,5 +1,7 @@
 #: Secrets file
 fleetshare_secrets.py
+known_hosts
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
