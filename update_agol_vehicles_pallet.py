@@ -20,7 +20,7 @@ def get_latest_csv(temp_csv_dir):
     latest_csv = csvs[-1]
 
     #: Pull the date out of vehicle_data_yyyymmdd.csv
-    date_string = latest_csv.rsplit('_')[-1].split('.')[0]
+    date_string = str(latest_csv).rsplit('_')[-1].split('.')[0]
     try:
         csv_datetime = datetime.date(int(date_string[:4]), int(date_string[4:6]), int(date_string[6:]))
     except ValueError as e:
@@ -40,7 +40,6 @@ def process():
     feature_service_name = secrets.FEATURE_SERVICE_NAME
 
     temp_csv_dir = os.path.join(arcpy.env.scratchFolder, 'fleet')
-    os.mkdir(temp_csv_dir)
     temp_fc_path = os.path.join(arcpy.env.scratchGDB, feature_service_name)
     sddraft_path = os.path.join(arcpy.env.scratchFolder, f'{feature_service_name}.sddraft')
     sd_path = sddraft_path[:-5]
@@ -50,12 +49,17 @@ def process():
         if arcpy.Exists(item):
             print(f'Deleting {item} prior to use...')
             arcpy.Delete_management(item)
+    os.mkdir(temp_csv_dir)
 
     #: Download all the files in the upload folder on sftp to temp_csv_dir
-    with pysftp.Connection(secrets.SFTP_HOST, username=secrets.SFTP_USERNAME, password=secrets.SFTP_PASSWORD) as sftp:
+    connection_opts = pysftp.CnOpts(knownhosts=r'.\known_hosts')
+    with pysftp.Connection(secrets.SFTP_HOST, 
+                           username=secrets.SFTP_USERNAME, 
+                           password=secrets.SFTP_PASSWORD, 
+                           cnopts=connection_opts) as sftp:
         sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
-    source_path = get_latest_csv(temp_csv_dir)
+    source_path = str(get_latest_csv(temp_csv_dir))
 
     print(f'Converting {source_path} to feature class {temp_fc_path}...')
     result = arcpy.management.XYTableToPoint(source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', coordinate_system=arcpy.SpatialReference(4326))
