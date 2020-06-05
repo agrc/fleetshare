@@ -36,6 +36,33 @@ def get_latest_csv(temp_csv_dir):
     return latest_csv
 
 
+def get_map_layer(project_path, fc_to_add):
+    '''
+    Get a reference to map and layer objects that can be used to create a service
+    definition.
+    project_path:       A path to a ArcGIS Pro project with only one map and no
+                        other layers (all layers will be removed)
+    fc_to_add:          A path to the feature class containing the features to
+                        be uploaded to ArcGIS Online. Will be added as a layer
+                        to the project.
+
+    returns: arcpy.mp.Layer and arcpy.mp.Map object references
+    '''
+
+    print(f'Getting map from {project_path}...')
+    project = arcpy.mp.ArcGISProject(project_path)
+    sharing_map = project.listMaps()[0]
+    for layer in sharing_map.listLayers():
+        print(f'Removing {layer} from {sharing_map.name}...')
+        sharing_map.removeLayer(layer)
+
+    print(f'Adding {fc_to_add} as layer to {sharing_map.name}...')
+    layer = sharing_map.addDataFromPath(fc_to_add)
+    project.save()
+    
+    return layer, sharing_map
+
+
 def process():
     feature_service_name = secrets.FEATURE_SERVICE_NAME
 
@@ -69,18 +96,7 @@ def process():
     gis = arcgis.gis.GIS('https://www.arcgis.com', secrets.AGOL_USERNAME, secrets.AGOL_PASSWORD)
     sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
-    #: Get project references
-    #: Assume there's only one map in the project, remove all layers for clean map
-    print(f'Getting map from {secrets.PROJECT_PATH}...')
-    project = arcpy.mp.ArcGISProject(secrets.PROJECT_PATH)
-    fleet_map = project.listMaps()[0]
-    for layer in fleet_map.listLayers():
-        print(f'Removing {layer} from {fleet_map.name}...')
-        fleet_map.removeLayer(layer)
-
-    print(f'Adding {temp_fc_path} as layer to {fleet_map.name}...')
-    layer = fleet_map.addDataFromPath(temp_fc_path)
-    project.save()
+    layer, fleet_map = get_map_layer(secrets.PROJECT_PATH, temp_fc_path)
 
     #: draft, stage, update, publish
     print(f'Staging and updating...')
