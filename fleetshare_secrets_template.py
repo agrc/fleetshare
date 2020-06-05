@@ -18,3 +18,5 @@ SD_ITEM_ID = ''
 FEATURES_ITEM_ID = ''
 #: path to ArcGIS Pro project for staging the service
 PROJECT_PATH = ''
+#: path to knownhosts file for sftp connection
+KNOWNHOSTS = ''

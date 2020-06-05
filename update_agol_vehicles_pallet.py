@@ -79,7 +79,7 @@ def process():
     os.mkdir(temp_csv_dir)
 
     #: Download all the files in the upload folder on sftp to temp_csv_dir
-    connection_opts = pysftp.CnOpts(knownhosts=r'.\known_hosts')
+    connection_opts = pysftp.CnOpts(knownhosts=secrets.KNOWNHOSTS)
     with pysftp.Connection(secrets.SFTP_HOST, 
                            username=secrets.SFTP_USERNAME, 
                            password=secrets.SFTP_PASSWORD, 
