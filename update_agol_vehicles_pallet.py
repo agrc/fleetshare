@@ -63,6 +63,15 @@ def get_map_layer(project_path, fc_to_add):
     return layer, sharing_map
 
 
+def update_agol_feature_service(sharing_map, layer, feature_service_name, sddraft_path, sd_path, sd_item):
+
+    sharing_draft = sharing_map.getWebLayerSharingDraft('HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
+    sharing_draft.exportToSDDraft(sddraft_path)
+    arcpy.server.StageService(sddraft_path, sd_path)
+    sd_item.update(data=sd_path)
+    sd_item.publish(overwrite=True)
+
+
 def process():
     feature_service_name = secrets.FEATURE_SERVICE_NAME
 
@@ -96,15 +105,12 @@ def process():
     gis = arcgis.gis.GIS('https://www.arcgis.com', secrets.AGOL_USERNAME, secrets.AGOL_PASSWORD)
     sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
+    print('Getting map and layer...')
     layer, fleet_map = get_map_layer(secrets.PROJECT_PATH, temp_fc_path)
 
     #: draft, stage, update, publish
     print(f'Staging and updating...')
-    sharing_draft = fleet_map.getWebLayerSharingDraft('HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
-    sharing_draft.exportToSDDraft(sddraft_path)
-    arcpy.server.StageService(sddraft_path, sd_path)
-    sd_item.update(data=sd_path)
-    sd_item.publish(overwrite=True)
+    update_agol_feature_service(fleet_map, layer, feature_service_name, sddraft_path, sd_path, sd_item)
 
     #: Update item description
     print('Updating item description...')
