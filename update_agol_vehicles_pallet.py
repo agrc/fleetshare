@@ -13,7 +13,7 @@ import fleetshare_secrets as secrets
 
 def get_latest_csv(temp_csv_dir, limit_three_days=False):
     '''
-    Returns the Path object of the latest 'vehicle_data_*.csv' file in
+    Returns the Path object and date of the latest 'vehicle_data_*.csv' file in
     temp_csv_dir. Will fail if limit_three_days is True and the date on the
     latest csv does not fall within the three preceding days.
     '''
@@ -43,7 +43,7 @@ def get_latest_csv(temp_csv_dir, limit_three_days=False):
         print(message)
         sys.exit(message)
 
-    return latest_csv
+    return latest_csv, date_string
 
 
 def get_map_layer(project_path, fc_to_add):
@@ -127,7 +127,7 @@ def process():
             password=secrets.SFTP_PASSWORD, cnopts=connection_opts) as sftp:
         sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
-    source_path = str(get_latest_csv(temp_csv_dir))
+    source_path, source_date = str(get_latest_csv(temp_csv_dir))
 
     print(f'Converting {source_path} to feature class {temp_fc_path}...')
     wgs84 = arcpy.SpatialReference(4326)
@@ -153,7 +153,7 @@ def process():
     print('Updating item description...')
     feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
     description = ('Vehicle location data obtained from Fleet; '
-                   f'updated on {datetime.date.today()}')
+                   f'updated on {source_date}')
     feature_item.update(item_properties={'description': description})
 
 if __name__ == '__main__':
