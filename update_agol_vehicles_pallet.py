@@ -11,7 +11,13 @@ import pysftp
 import fleetshare_secrets as secrets
 
 
-def get_latest_csv(temp_csv_dir):
+def get_latest_csv(temp_csv_dir, limit_three_days=False):
+    '''
+    Returns the Path object of the latest 'vehicle_data_*.csv' file in
+    temp_csv_dir. Will fail if limit_three_days is True and the date on the
+    latest csv does not fall within the three preceding days.
+    '''
+
     #: get list of csvs
     temp_dir_path = Path(temp_csv_dir)
     csvs = sorted(temp_dir_path.glob('vehicle_data_*.csv'))
@@ -19,7 +25,7 @@ def get_latest_csv(temp_csv_dir):
     #: The last of the sorted list of csvs should be the latest
     latest_csv = csvs[-1]
 
-    #: Pull the date out of vehicle_data_yyyymmdd.csv
+    #: Pull the date out of vehicle_data_yyyymmdd.csv to check recency
     date_string = str(latest_csv).rsplit('_')[-1].split('.')[0]
     try:
         csv_datetime = datetime.date(int(date_string[:4]), int(date_string[4:6]), int(date_string[6:]))
@@ -29,7 +35,7 @@ def get_latest_csv(temp_csv_dir):
     #: Only continue if the latest is within three days
     today = datetime.date.today()
     last_three_days = [today - datetime.timedelta(days=i) for i in range(4)]
-    if csv_datetime not in last_three_days:
+    if limit_three_days and csv_datetime not in last_three_days:
         print(f'Latest csv "{latest_csv} not within three days of today ({today})')
         sys.exit(f'Latest csv "{latest_csv} not within three days of today ({today})')
 
@@ -64,6 +70,23 @@ def get_map_layer(project_path, fc_to_add):
 
 
 def update_agol_feature_service(sharing_map, layer, feature_service_name, sddraft_path, sd_path, sd_item):
+    '''
+    Helper method for updating an AGOL hosted feature service from an ArcGIS
+    Pro arcpy.mp.Map and .Layer ojbects.
+
+    sharing_map:            An arcpy.mp.Map object containing the layer to be
+                            shared.
+    layer:                  The arcpy.mp.Layer object created from the feature
+                            class that holds your new data.
+    feature_service_name:   The name of the existing Hosted Feature Service.
+                            Must match exactly, otherwise the publish step will
+                            fail.
+    sddraft_path, sd_path:  Strings of the paths to save the service definition
+                            draft and final files.
+    sd_item:                The URL of the service definition item on AGOL
+                            originally used to publish the hosted feature
+                            service.
+    '''
 
     sharing_draft = sharing_map.getWebLayerSharingDraft('HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
     sharing_draft.exportToSDDraft(sddraft_path)
