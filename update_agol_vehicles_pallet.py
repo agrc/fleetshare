@@ -38,16 +38,18 @@ def get_latest_csv(temp_csv_dir, limit_three_days=False):
     today = datetime.date.today()
     last_three_days = [today - datetime.timedelta(days=i) for i in range(4)]
     if limit_three_days and csv_datetime not in last_three_days:
-        print(f'Latest csv "{latest_csv} not within three days of today ({today})')
-        sys.exit(f'Latest csv "{latest_csv} not within three days of today ({today})')
+        message = (f'Latest csv "{latest_csv}" not within three days of'
+                   f' today ({today})')
+        print(message)
+        sys.exit(message)
 
     return latest_csv
 
 
 def get_map_layer(project_path, fc_to_add):
     '''
-    Get a reference to map and layer objects that can be used to create a service
-    definition.
+    Get a reference to map and layer objects that can be used to create a
+    service definition.
     project_path:       A path to a ArcGIS Pro project with only one map and no
                         other layers (all layers will be removed)
     fc_to_add:          A path to the feature class containing the features to
@@ -120,25 +122,23 @@ def process():
     #: Download all the files in the upload folder on sftp to temp_csv_dir
     print(f'Downloading all files from {secrets.KNOWNHOSTS}/upload...')
     connection_opts = pysftp.CnOpts(knownhosts=secrets.KNOWNHOSTS)
-    with pysftp.Connection(secrets.SFTP_HOST, 
-                           username=secrets.SFTP_USERNAME, 
-                           password=secrets.SFTP_PASSWORD, 
-                           cnopts=connection_opts) as sftp:
+    with pysftp.Connection(
+            secrets.SFTP_HOST, username=secrets.SFTP_USERNAME, 
+            password=secrets.SFTP_PASSWORD, cnopts=connection_opts) as sftp:
         sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
     source_path = str(get_latest_csv(temp_csv_dir))
 
     print(f'Converting {source_path} to feature class {temp_fc_path}...')
     wgs84 = arcpy.SpatialReference(4326)
-    result = arcpy.management.XYTableToPoint(source_path, temp_fc_path, 
-                                             'LONGITUDE', 'LATITUDE', 
-                                             coordinate_system=wgs84)
+    result = arcpy.management.XYTableToPoint(
+        source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', 
+        coordinate_system=wgs84)
 
     #: Overwrite existing AGOL service
     print(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
-    gis = arcgis.gis.GIS('https://www.arcgis.com', 
-                         secrets.AGOL_USERNAME, 
-                         secrets.AGOL_PASSWORD)
+    gis = arcgis.gis.GIS(
+        'https://www.arcgis.com', secrets.AGOL_USERNAME, secrets.AGOL_PASSWORD)
     sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
     print('Getting map and layer...')
@@ -146,13 +146,14 @@ def process():
 
     #: draft, stage, update, publish
     print(f'Staging and updating...')
-    update_agol_feature_service(fleet_map, layer, feature_service_name,
-                                sddraft_path, sd_path, sd_item)
+    update_agol_feature_service(
+        fleet_map, layer, feature_service_name, sddraft_path, sd_path, sd_item)
 
     #: Update item description
     print('Updating item description...')
     feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
-    description = f'Vehicle location data obtained from Fleet; updated on {datetime.date.today()}'
+    description = ('Vehicle location data obtained from Fleet; '
+                   f'updated on {datetime.date.today()}')
     feature_item.update(item_properties={'description': description})
 
 if __name__ == '__main__':
