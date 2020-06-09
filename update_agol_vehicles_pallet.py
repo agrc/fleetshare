@@ -119,6 +119,11 @@ def process():
             arcpy.Delete_management(item)
     os.mkdir(temp_csv_dir)
 
+    if not secrets.KNOWNHOSTS or not os.path.isfile(secrets.KNOWNHOSTS):
+        raise FileNotFoundError(
+            f'known_hosts file {secrets.KNOWNHOSTS} not found. Please create'
+            ' with ssh-keyscan.')
+
     #: Download all the files in the upload folder on sftp to temp_csv_dir
     print(f'Downloading all files from {secrets.KNOWNHOSTS}/upload...')
     connection_opts = pysftp.CnOpts(knownhosts=secrets.KNOWNHOSTS)
