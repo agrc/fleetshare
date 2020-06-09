@@ -3,6 +3,7 @@ import os
 import sys
 
 from pathlib import Path
+from urllib.error import HTTPError
 
 import arcgis
 import arcpy
@@ -161,9 +162,10 @@ def process():
         description = ('Vehicle location data obtained from Fleet; '
                     f'updated on {source_date}')
         feature_item.update(item_properties={'description': description})
-    except HTTPError:
-        print(f'Connection error, probably related to connection with AGOL.')
-        raise
+    except HTTPError as e:
+        print(f'Connection error with {e.url}, probably related to connection '
+              'with AGOL.')
+        raise e
 
 if __name__ == '__main__':
     process()
