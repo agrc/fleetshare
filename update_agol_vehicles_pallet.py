@@ -20,7 +20,7 @@ from forklift.models import Pallet
 import fleetshare_secrets as secrets
 
 
-def get_latest_csv(temp_csv_dir, log, limit_three_days=False):
+def get_latest_csv(temp_csv_dir, log, previous_days=-1):
     '''
     Returns the Path object and date of the latest 'vehicle_data_*.csv' file in
     temp_csv_dir. Will fail if limit_three_days is True and the date on the
@@ -49,12 +49,13 @@ def get_latest_csv(temp_csv_dir, log, limit_three_days=False):
         log.error(f'Can\'t parse date from last csv: {latest_csv}')
         raise e
 
-    #: Only continue if the latest is within three days
+    #: Only continue if the latest is within specified number of days
     today = datetime.date.today()
-    last_three_days = [today - datetime.timedelta(days=i) for i in range(4)]
-    if limit_three_days and csv_datetime not in last_three_days:
-        message = (f'Latest csv "{latest_csv}" not within three days of'
-                   f' today ({today})')
+    previous_dates = [today - datetime.timedelta(days=i)
+                      for i in range(previous_days + 1)]
+    if previous_days > 0 and csv_datetime not in previous_dates:
+        message = (f'Latest csv "{latest_csv}" not within {previous_days} days'
+                   f' of today ({today})')
         log.info(message)
         sys.exit(message)
 
@@ -152,8 +153,9 @@ class AGOLVehiclesPallet(Pallet):
                 password=secrets.SFTP_PASSWORD, cnopts=connection_opts) as sftp:
             sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
+        #: Get the latest file
         source_path_object, source_date = get_latest_csv(
-            temp_csv_dir, self.log, limit_three_days=False)
+            temp_csv_dir, self.log, previous_days=7)
         source_path = str(source_path_object)
 
         self.log.info(
