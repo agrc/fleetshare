@@ -140,26 +140,30 @@ def process():
         source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', 
         coordinate_system=wgs84)
 
-    #: Overwrite existing AGOL service
-    print(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
-    gis = arcgis.gis.GIS(
-        'https://www.arcgis.com', secrets.AGOL_USERNAME, secrets.AGOL_PASSWORD)
-    sd_item = gis.content.get(secrets.SD_ITEM_ID)
+    try:
+        #: Overwrite existing AGOL service
+        print(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
+        gis = arcgis.gis.GIS(
+            'https://www.arcgis.com', secrets.AGOL_USERNAME, secrets.AGOL_PASSWORD)
+        sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
-    print('Getting map and layer...')
-    layer, fleet_map = get_map_layer(secrets.PROJECT_PATH, temp_fc_path)
+        print('Getting map and layer...')
+        layer, fleet_map = get_map_layer(secrets.PROJECT_PATH, temp_fc_path)
 
-    #: draft, stage, update, publish
-    print(f'Staging and updating...')
-    update_agol_feature_service(
-        fleet_map, layer, feature_service_name, sddraft_path, sd_path, sd_item)
+        #: draft, stage, update, publish
+        print(f'Staging and updating...')
+        update_agol_feature_service(
+            fleet_map, layer, feature_service_name, sddraft_path, sd_path, sd_item)
 
-    #: Update item description
-    print('Updating item description...')
-    feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
-    description = ('Vehicle location data obtained from Fleet; '
-                   f'updated on {source_date}')
-    feature_item.update(item_properties={'description': description})
+        #: Update item description
+        print('Updating item description...')
+        feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
+        description = ('Vehicle location data obtained from Fleet; '
+                    f'updated on {source_date}')
+        feature_item.update(item_properties={'description': description})
+    except HTTPError:
+        print(f'Connection error, probably related to connection with AGOL.')
+        raise
 
 if __name__ == '__main__':
     process()
