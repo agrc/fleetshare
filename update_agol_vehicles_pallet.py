@@ -133,7 +133,7 @@ class AGOLVehiclesPallet(Pallet):
 
         #: Download all the files in the upload folder on sftp to temp_csv_dir
         self.log.info(
-            f'Downloading all files from {secrets.KNOWNHOSTS}/upload...')
+            f'Downloading all files from {secrets.SFTP_HOST}/upload...')
         connection_opts = pysftp.CnOpts(knownhosts=secrets.KNOWNHOSTS)
         with pysftp.Connection(
                 secrets.SFTP_HOST, username=secrets.SFTP_USERNAME, 
@@ -141,7 +141,7 @@ class AGOLVehiclesPallet(Pallet):
             sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
         source_path_object, source_date = get_latest_csv(
-            temp_csv_dir, self.log, limit_three_days=True)
+            temp_csv_dir, self.log, limit_three_days=False)
         source_path = str(source_path_object)
 
         self.log.info(
@@ -150,6 +150,7 @@ class AGOLVehiclesPallet(Pallet):
         result = arcpy.management.XYTableToPoint(
             source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', 
             coordinate_system=wgs84)
+        self.log.info(result.getMessages())
 
         try:
             #: Overwrite existing AGOL service
