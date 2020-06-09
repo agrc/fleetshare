@@ -14,7 +14,7 @@ from forklift.models import Pallet
 import fleetshare_secrets as secrets
 
 
-def get_latest_csv(temp_csv_dir, limit_three_days=False):
+def get_latest_csv(temp_csv_dir, log, limit_three_days=False):
     '''
     Returns the Path object and date of the latest 'vehicle_data_*.csv' file in
     temp_csv_dir. Will fail if limit_three_days is True and the date on the
@@ -43,13 +43,13 @@ def get_latest_csv(temp_csv_dir, limit_three_days=False):
     if limit_three_days and csv_datetime not in last_three_days:
         message = (f'Latest csv "{latest_csv}" not within three days of'
                    f' today ({today})')
-        print(message)
+        log.info(message)
         sys.exit(message)
 
     return latest_csv, date_string
 
 
-def get_map_layer(project_path, fc_to_add):
+def get_map_layer(project_path, fc_to_add, log):
     '''
     Get a reference to map and layer objects that can be used to create a
     service definition.
@@ -62,14 +62,14 @@ def get_map_layer(project_path, fc_to_add):
     returns: arcpy.mp.Layer and arcpy.mp.Map object references
     '''
 
-    print(f'Getting map from {project_path}...')
+    log.info(f'Getting map from {project_path}...')
     project = arcpy.mp.ArcGISProject(project_path)
     sharing_map = project.listMaps()[0]
     for layer in sharing_map.listLayers():
-        print(f'Removing {layer} from {sharing_map.name}...')
+        log.info(f'Removing {layer} from {sharing_map.name}...')
         sharing_map.removeLayer(layer)
 
-    print(f'Adding {fc_to_add} as layer to {sharing_map.name}...')
+    log.info(f'Adding {fc_to_add} as layer to {sharing_map.name}...')
     layer = sharing_map.addDataFromPath(fc_to_add)
     project.save()
     
@@ -122,7 +122,7 @@ class AGOLVehiclesPallet(Pallet):
         paths = [temp_csv_dir, temp_fc_path, sddraft_path, sd_path]
         for item in paths:
             if arcpy.Exists(item):
-                print(f'Deleting {item} prior to use...')
+                self.log.info(f'Deleting {item} prior to use...')
                 arcpy.Delete_management(item)
         os.mkdir(temp_csv_dir)
 
@@ -132,16 +132,20 @@ class AGOLVehiclesPallet(Pallet):
                 'create with ssh-keyscan.')
 
         #: Download all the files in the upload folder on sftp to temp_csv_dir
-        print(f'Downloading all files from {secrets.KNOWNHOSTS}/upload...')
+        self.log.info(
+            f'Downloading all files from {secrets.KNOWNHOSTS}/upload...')
         connection_opts = pysftp.CnOpts(knownhosts=secrets.KNOWNHOSTS)
         with pysftp.Connection(
                 secrets.SFTP_HOST, username=secrets.SFTP_USERNAME, 
                 password=secrets.SFTP_PASSWORD, cnopts=connection_opts) as sftp:
             sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
-        source_path, source_date = str(get_latest_csv(temp_csv_dir))
+        source_path_object, source_date = get_latest_csv(
+            temp_csv_dir, self.log, limit_three_days=True)
+        source_path = str(source_path_object)
 
-        print(f'Converting {source_path} to feature class {temp_fc_path}...')
+        self.log.info(
+            f'Converting {source_path} to feature class {temp_fc_path}...')
         wgs84 = arcpy.SpatialReference(4326)
         result = arcpy.management.XYTableToPoint(
             source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', 
@@ -149,29 +153,30 @@ class AGOLVehiclesPallet(Pallet):
 
         try:
             #: Overwrite existing AGOL service
-            print(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
+            self.log.info(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
             gis = arcgis.gis.GIS(
                 'https://www.arcgis.com', secrets.AGOL_USERNAME,
                 secrets.AGOL_PASSWORD)
             sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
-            print('Getting map and layer...')
-            layer, fleet_map = get_map_layer(secrets.PROJECT_PATH, temp_fc_path)
+            self.log.info('Getting map and layer...')
+            layer, fleet_map = get_map_layer(
+                secrets.PROJECT_PATH, temp_fc_path, self.log)
 
             #: draft, stage, update, publish
-            print(f'Staging and updating...')
+            self.log.info(f'Staging and updating...')
             update_agol_feature_service(
                 fleet_map, layer, feature_service_name, sddraft_path,
                 sd_path, sd_item)
 
             #: Update item description
-            print('Updating item description...')
+            self.log.info('Updating item description...')
             feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
             description = ('Vehicle location data obtained from Fleet; '
                         f'updated on {source_date}')
             feature_item.update(item_properties={'description': description})
         except HTTPError as e:
-            print(f'Connection error with {e.url}, probably related to '
+            self.log.info(f'Connection error with {e.url}, probably related to '
                 'connection with AGOL.')
             raise e
 
