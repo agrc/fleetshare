@@ -1,3 +1,9 @@
+'''
+update_agol_vehicles_pallet.py:
+Automates pulling csvs from an FTP folder and updating a hosted feature
+service with the contents of the latest one.
+'''
+
 import datetime
 import os
 import sys

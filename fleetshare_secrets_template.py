@@ -1,6 +1,6 @@
 #: Path to csv from fleet
 CSV_PATH = ''
-#: Name of published hosted feature service on AGOL 
+#: Name of published hosted feature service on AGOL
 FEATURE_SERVICE_NAME = ''
 #: SFTP host (fqdn or IP)
 SFTP_HOST = ''
