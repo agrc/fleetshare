@@ -26,7 +26,12 @@ def get_latest_csv(temp_csv_dir, log, limit_three_days=False):
     csvs = sorted(temp_dir_path.glob('vehicle_data_*.csv'))
 
     #: The last of the sorted list of csvs should be the latest
-    latest_csv = csvs[-1]
+    try:
+        latest_csv = csvs[-1]
+    except IndexError as e:
+        log.error('Can\'t get last "vehicle_data_*.csv" file- are there any'
+                  ' csv files?')
+        raise e
 
     #: Pull the date out of vehicle_data_yyyymmdd.csv to check recency
     date_string = str(latest_csv).rsplit('_')[-1].split('.')[0]
@@ -35,6 +40,7 @@ def get_latest_csv(temp_csv_dir, log, limit_three_days=False):
                                      int(date_string[4:6]),
                                      int(date_string[6:]))
     except ValueError as e:
+        log.error(f'Can\'t parse date from last csv: {latest_csv}')
         raise e
 
     #: Only continue if the latest is within three days
@@ -72,7 +78,7 @@ def get_map_layer(project_path, fc_to_add, log):
     log.info(f'Adding {fc_to_add} as layer to {sharing_map.name}...')
     layer = sharing_map.addDataFromPath(fc_to_add)
     project.save()
-    
+
     return layer, sharing_map
 
 
@@ -80,7 +86,7 @@ def update_agol_feature_service(sharing_map, layer, feature_service_name,
                                 sddraft_path, sd_path, sd_item):
     '''
     Helper method for updating an AGOL hosted feature service from an ArcGIS
-    Pro arcpy.mp.Map and .Layer ojbects.
+    Pro arcpy.mp.Map and .Layer objects.
 
     sharing_map:            An arcpy.mp.Map object containing the layer to be
                             shared.
@@ -109,13 +115,13 @@ class AGOLVehiclesPallet(Pallet):
         return True
 
     def process(self):
-        
+
         #: Set up paths and directories
         feature_service_name = secrets.FEATURE_SERVICE_NAME
 
         temp_csv_dir = os.path.join(arcpy.env.scratchFolder, 'fleet')
         temp_fc_path = os.path.join(arcpy.env.scratchGDB, feature_service_name)
-        sddraft_path = os.path.join(arcpy.env.scratchFolder, 
+        sddraft_path = os.path.join(arcpy.env.scratchFolder,
                                     f'{feature_service_name}.sddraft')
         sd_path = sddraft_path[:-5]
 
@@ -136,7 +142,7 @@ class AGOLVehiclesPallet(Pallet):
             f'Downloading all files from {secrets.SFTP_HOST}/upload...')
         connection_opts = pysftp.CnOpts(knownhosts=secrets.KNOWNHOSTS)
         with pysftp.Connection(
-                secrets.SFTP_HOST, username=secrets.SFTP_USERNAME, 
+                secrets.SFTP_HOST, username=secrets.SFTP_USERNAME,
                 password=secrets.SFTP_PASSWORD, cnopts=connection_opts) as sftp:
             sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
@@ -148,7 +154,7 @@ class AGOLVehiclesPallet(Pallet):
             f'Converting {source_path} to feature class {temp_fc_path}...')
         wgs84 = arcpy.SpatialReference(4326)
         result = arcpy.management.XYTableToPoint(
-            source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', 
+            source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE',
             coordinate_system=wgs84)
         self.log.debug(result.getMessages())
 
@@ -174,11 +180,11 @@ class AGOLVehiclesPallet(Pallet):
             self.log.info('Updating item description...')
             feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
             description = ('Vehicle location data obtained from Fleet; '
-                        f'updated on {source_date}')
+                           f'updated on {source_date}')
             feature_item.update(item_properties={'description': description})
         except HTTPError as e:
             self.log.info(f'Connection error with {e.url}, probably related to '
-                'connection with AGOL.')
+                          'connection with AGOL.')
             raise e
 
 if __name__ == '__main__':
