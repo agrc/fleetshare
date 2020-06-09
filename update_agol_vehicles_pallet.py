@@ -9,6 +9,8 @@ import arcgis
 import arcpy
 import pysftp
 
+from forklift.models import Pallet
+
 import fleetshare_secrets as secrets
 
 
@@ -101,71 +103,79 @@ def update_agol_feature_service(sharing_map, layer, feature_service_name,
     sd_item.update(data=sd_path)
     sd_item.publish(overwrite=True)
 
+class AGOLVehiclesPallet(Pallet):
+    def requires_processing(self):
+        #: No crates, run process every time
+        return True
 
-def process():
-    
-    #: Set up paths and directories
-    feature_service_name = secrets.FEATURE_SERVICE_NAME
+    def process(self):
+        
+        #: Set up paths and directories
+        feature_service_name = secrets.FEATURE_SERVICE_NAME
 
-    temp_csv_dir = os.path.join(arcpy.env.scratchFolder, 'fleet')
-    temp_fc_path = os.path.join(arcpy.env.scratchGDB, feature_service_name)
-    sddraft_path = os.path.join(arcpy.env.scratchFolder, 
-                                f'{feature_service_name}.sddraft')
-    sd_path = sddraft_path[:-5]
+        temp_csv_dir = os.path.join(arcpy.env.scratchFolder, 'fleet')
+        temp_fc_path = os.path.join(arcpy.env.scratchGDB, feature_service_name)
+        sddraft_path = os.path.join(arcpy.env.scratchFolder, 
+                                    f'{feature_service_name}.sddraft')
+        sd_path = sddraft_path[:-5]
 
-    paths = [temp_csv_dir, temp_fc_path, sddraft_path, sd_path]
-    for item in paths:
-        if arcpy.Exists(item):
-            print(f'Deleting {item} prior to use...')
-            arcpy.Delete_management(item)
-    os.mkdir(temp_csv_dir)
+        paths = [temp_csv_dir, temp_fc_path, sddraft_path, sd_path]
+        for item in paths:
+            if arcpy.Exists(item):
+                print(f'Deleting {item} prior to use...')
+                arcpy.Delete_management(item)
+        os.mkdir(temp_csv_dir)
 
-    if not secrets.KNOWNHOSTS or not os.path.isfile(secrets.KNOWNHOSTS):
-        raise FileNotFoundError(
-            f'known_hosts file {secrets.KNOWNHOSTS} not found. Please create'
-            ' with ssh-keyscan.')
+        if not secrets.KNOWNHOSTS or not os.path.isfile(secrets.KNOWNHOSTS):
+            raise FileNotFoundError(
+                f'known_hosts file {secrets.KNOWNHOSTS} not found. Please '
+                'create with ssh-keyscan.')
 
-    #: Download all the files in the upload folder on sftp to temp_csv_dir
-    print(f'Downloading all files from {secrets.KNOWNHOSTS}/upload...')
-    connection_opts = pysftp.CnOpts(knownhosts=secrets.KNOWNHOSTS)
-    with pysftp.Connection(
-            secrets.SFTP_HOST, username=secrets.SFTP_USERNAME, 
-            password=secrets.SFTP_PASSWORD, cnopts=connection_opts) as sftp:
-        sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
+        #: Download all the files in the upload folder on sftp to temp_csv_dir
+        print(f'Downloading all files from {secrets.KNOWNHOSTS}/upload...')
+        connection_opts = pysftp.CnOpts(knownhosts=secrets.KNOWNHOSTS)
+        with pysftp.Connection(
+                secrets.SFTP_HOST, username=secrets.SFTP_USERNAME, 
+                password=secrets.SFTP_PASSWORD, cnopts=connection_opts) as sftp:
+            sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
-    source_path, source_date = str(get_latest_csv(temp_csv_dir))
+        source_path, source_date = str(get_latest_csv(temp_csv_dir))
 
-    print(f'Converting {source_path} to feature class {temp_fc_path}...')
-    wgs84 = arcpy.SpatialReference(4326)
-    result = arcpy.management.XYTableToPoint(
-        source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', 
-        coordinate_system=wgs84)
+        print(f'Converting {source_path} to feature class {temp_fc_path}...')
+        wgs84 = arcpy.SpatialReference(4326)
+        result = arcpy.management.XYTableToPoint(
+            source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', 
+            coordinate_system=wgs84)
 
-    try:
-        #: Overwrite existing AGOL service
-        print(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
-        gis = arcgis.gis.GIS(
-            'https://www.arcgis.com', secrets.AGOL_USERNAME, secrets.AGOL_PASSWORD)
-        sd_item = gis.content.get(secrets.SD_ITEM_ID)
+        try:
+            #: Overwrite existing AGOL service
+            print(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
+            gis = arcgis.gis.GIS(
+                'https://www.arcgis.com', secrets.AGOL_USERNAME,
+                secrets.AGOL_PASSWORD)
+            sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
-        print('Getting map and layer...')
-        layer, fleet_map = get_map_layer(secrets.PROJECT_PATH, temp_fc_path)
+            print('Getting map and layer...')
+            layer, fleet_map = get_map_layer(secrets.PROJECT_PATH, temp_fc_path)
 
-        #: draft, stage, update, publish
-        print(f'Staging and updating...')
-        update_agol_feature_service(
-            fleet_map, layer, feature_service_name, sddraft_path, sd_path, sd_item)
+            #: draft, stage, update, publish
+            print(f'Staging and updating...')
+            update_agol_feature_service(
+                fleet_map, layer, feature_service_name, sddraft_path,
+                sd_path, sd_item)
 
-        #: Update item description
-        print('Updating item description...')
-        feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
-        description = ('Vehicle location data obtained from Fleet; '
-                    f'updated on {source_date}')
-        feature_item.update(item_properties={'description': description})
-    except HTTPError as e:
-        print(f'Connection error with {e.url}, probably related to connection '
-              'with AGOL.')
-        raise e
+            #: Update item description
+            print('Updating item description...')
+            feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
+            description = ('Vehicle location data obtained from Fleet; '
+                        f'updated on {source_date}')
+            feature_item.update(item_properties={'description': description})
+        except HTTPError as e:
+            print(f'Connection error with {e.url}, probably related to '
+                'connection with AGOL.')
+            raise e
 
 if __name__ == '__main__':
-    process()
+    pallet = AGOLVehiclesPallet()
+    pallet.configure_standalone_logging()
+    pallet.process()
