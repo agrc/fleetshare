@@ -150,7 +150,7 @@ class AGOLVehiclesPallet(Pallet):
         result = arcpy.management.XYTableToPoint(
             source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', 
             coordinate_system=wgs84)
-        self.log.info(result.getMessages())
+        self.log.debug(result.getMessages())
 
         try:
             #: Overwrite existing AGOL service
