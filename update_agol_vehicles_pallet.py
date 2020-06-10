@@ -21,7 +21,7 @@ import fleetshare_secrets as secrets
 
 def get_latest_csv(temp_csv_dir, log, previous_days=-1):
     '''
-    Returns the Path object and date of the latest 'vehicle_data_*.csv' file in
+    Returns the path string and date of the latest 'vehicle_data_*.csv' file in
     temp_csv_dir. Will fail if limit_three_days is True and the date on the
     latest csv does not fall within the three preceding days.
     '''
@@ -60,18 +60,18 @@ def get_latest_csv(temp_csv_dir, log, previous_days=-1):
         log.exception(err_msg)
         raise e
 
-    return latest_csv, date_string
+    return str(latest_csv), date_string
 
 
 def get_map_layer(project_path, fc_to_add, log):
     '''
     Get a reference to map and layer objects that can be used to create a
     service definition.
-    project_path:       A path to a ArcGIS Pro project with only one map and no
-                        other layers (all layers will be removed)
-    fc_to_add:          A path to the feature class containing the features to
-                        be uploaded to ArcGIS Online. Will be added as a layer
-                        to the project.
+    project_path:       A path string to a ArcGIS Pro project with only one map
+                        and no other layers (all layers will be removed)
+    fc_to_add:          A path string to the feature class containing the
+                        features to be uploaded to ArcGIS Online. Will be added
+                        as a layer to the project.
 
     returns: arcpy.mp.Layer and arcpy.mp.Map object references
     '''
@@ -155,9 +155,8 @@ class AGOLVehiclesPallet(Pallet):
             sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
         #: Get the latest file
-        source_path_object, source_date = get_latest_csv(
+        source_path, source_date = get_latest_csv(
             temp_csv_dir, self.log, previous_days=7)
-        source_path = str(source_path_object)
 
         self.log.info(
             f'Converting {source_path} to feature class {temp_fc_path}...')
