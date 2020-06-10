@@ -34,8 +34,9 @@ def get_latest_csv(temp_csv_dir, log, previous_days=-1):
     try:
         latest_csv = csvs[-1]
     except IndexError as e:
-        log.error('Can\'t get last "vehicle_data_*.csv" file- are there any'
-                  ' csv files?')
+        err_msg = ('Can\'t get last "vehicle_data_*.csv" file- are there any'
+                   ' csv files?')
+        log.exception(err_msg)
         raise e
 
     #: Pull the date out of vehicle_data_yyyymmdd.csv to check recency
@@ -45,7 +46,8 @@ def get_latest_csv(temp_csv_dir, log, previous_days=-1):
                                      int(date_string[4:6]),
                                      int(date_string[6:]))
     except ValueError as e:
-        log.error(f'Can\'t parse date from last csv: {latest_csv}')
+        err_msg = f'Can\'t parse date from last csv: {latest_csv}'
+        log.exception(err_msg)
         raise e
 
     #: Only continue if the latest is within specified number of days
@@ -53,9 +55,10 @@ def get_latest_csv(temp_csv_dir, log, previous_days=-1):
     previous_dates = [today - datetime.timedelta(days=i)
                       for i in range(previous_days + 1)]
     if previous_days > 0 and csv_datetime not in previous_dates:
-        message = (f'Latest csv "{latest_csv}" not within {previous_days} days'
+        err_msg = (f'Latest csv "{latest_csv}" not within {previous_days} days'
                    f' of today ({today})')
-        raise ValueError(message)
+        log.exception(err_msg)
+        raise e
 
     return latest_csv, date_string
 
@@ -189,8 +192,9 @@ class AGOLVehiclesPallet(Pallet):
                            f'updated on {source_date}')
             feature_item.update(item_properties={'description': description})
         except HTTPError as e:
-            self.log.info(f'Connection error with {e.url}, probably related to '
-                          'connection with AGOL.')
+            err_msg = (f'Connection error with {e.url}, probably related to '
+                       'connection with AGOL.')
+            self.log.exception(err_msg)
             raise e
 
 if __name__ == '__main__':
