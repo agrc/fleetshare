@@ -6,7 +6,6 @@ service with the contents of the latest one.
 
 import datetime
 import os
-import sys
 
 from pathlib import Path
 from urllib.error import HTTPError
@@ -56,8 +55,7 @@ def get_latest_csv(temp_csv_dir, log, previous_days=-1):
     if previous_days > 0 and csv_datetime not in previous_dates:
         message = (f'Latest csv "{latest_csv}" not within {previous_days} days'
                    f' of today ({today})')
-        log.info(message)
-        sys.exit(message)
+        raise ValueError(message)
 
     return latest_csv, date_string
 
