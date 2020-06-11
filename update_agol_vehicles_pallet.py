@@ -20,108 +20,111 @@ from forklift.models import Pallet
 import fleetshare_secrets as secrets
 
 
-def get_latest_csv(temp_csv_dir, log, previous_days=-1):
-    '''
-    Returns the path string and date of the latest 'vehicle_data_*.csv' file in
-    temp_csv_dir. Will fail if limit_three_days is True and the date on the
-    latest csv does not fall within the three preceding days.
-    '''
-
-    #: get list of csvs
-    temp_dir_path = Path(temp_csv_dir)
-    csvs = sorted(temp_dir_path.glob('vehicle_data_*.csv'))
-
-    #: The last of the sorted list of csvs should be the latest
-    try:
-        latest_csv = csvs[-1]
-    except IndexError as e:
-        err_msg = ('Can\'t get last "vehicle_data_*.csv" file- are there any'
-                   ' csv files?')
-        log.exception(err_msg)
-        raise e
-
-    #: Pull the date out of vehicle_data_yyyymmdd.csv to check recency
-    date_string = str(latest_csv).rsplit('_')[-1].split('.')[0]
-    try:
-        csv_datetime = datetime.date(int(date_string[:4]),
-                                     int(date_string[4:6]),
-                                     int(date_string[6:]))
-    except ValueError as e:
-        err_msg = f'Can\'t parse date from last csv: {latest_csv}'
-        log.exception(err_msg)
-        raise e
-
-    #: Only continue if the latest is within specified number of days
-    today = datetime.date.today()
-    previous_dates = [today - datetime.timedelta(days=i)
-                      for i in range(previous_days + 1)]
-    if previous_days > 0 and csv_datetime not in previous_dates:
-        err_msg = (f'Latest csv "{latest_csv}" not within {previous_days} days'
-                   f' of today ({today})')
-        log.exception(err_msg)
-        raise ValueError(err_msg)
-
-    return str(latest_csv), date_string
-
-
-def get_map_layer(project_path, fc_to_add, log):
-    '''
-    Get a reference to map and layer objects that can be used to create a
-    service definition.
-    project_path:       A path string to a ArcGIS Pro project with only one map
-                        and no other layers (all layers will be removed)
-    fc_to_add:          A path string to the feature class containing the
-                        features to be uploaded to ArcGIS Online. Will be added
-                        as a layer to the project.
-
-    returns: arcpy.mp.Layer and arcpy.mp.Map object references
-    '''
-
-    log.info(f'Getting map from {project_path}...')
-    project = arcpy.mp.ArcGISProject(project_path)
-    sharing_map = project.listMaps()[0]
-    for layer in sharing_map.listLayers():
-        log.info(f'Removing {layer} from {sharing_map.name}...')
-        sharing_map.removeLayer(layer)
-
-    log.info(f'Adding {fc_to_add} as layer to {sharing_map.name}...')
-    layer = sharing_map.addDataFromPath(fc_to_add)
-    project.save()
-
-    return layer, sharing_map
-
-
-def update_agol_feature_service(sharing_map, layer, feature_service_name,
-                                sddraft_path, sd_path, sd_item):
-    '''
-    Helper method for updating an AGOL hosted feature service from an ArcGIS
-    Pro arcpy.mp.Map and .Layer objects.
-
-    sharing_map:            An arcpy.mp.Map object containing the layer to be
-                            shared.
-    layer:                  The arcpy.mp.Layer object created from the feature
-                            class that holds your new data.
-    feature_service_name:   The name of the existing Hosted Feature Service.
-                            Must match exactly, otherwise the publish step will
-                            fail.
-    sddraft_path, sd_path:  Strings of the paths to save the service definition
-                            draft and final files.
-    sd_item:                The URL of the service definition item on AGOL
-                            originally used to publish the hosted feature
-                            service.
-    '''
-
-    sharing_draft = sharing_map.getWebLayerSharingDraft(
-        'HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
-    sharing_draft.exportToSDDraft(sddraft_path)
-    arcpy.server.StageService(sddraft_path, sd_path)
-    sd_item.update(data=sd_path)
-    sd_item.publish(overwrite=True)
-
 class AGOLVehiclesPallet(Pallet):
     def requires_processing(self):
         #: No crates, run process every time
         return True
+
+
+    def get_latest_csv(self, temp_csv_dir, previous_days=-1):
+        '''
+        Returns the path string and date of the latest 'vehicle_data_*.csv'
+        file in temp_csv_dir. Will fail if limit_three_days is True and the
+        date on the latest csv does not fall within the three preceding days.
+        '''
+
+        #: get list of csvs
+        temp_dir_path = Path(temp_csv_dir)
+        csvs = sorted(temp_dir_path.glob('vehicle_data_*.csv'))
+
+        #: The last of the sorted list of csvs should be the latest
+        try:
+            latest_csv = csvs[-1]
+        except IndexError as e:
+            err_msg = ('Can\'t get last "vehicle_data_*.csv" file- are there '
+                       'any csv files?')
+            self.log.exception(err_msg)
+            raise e
+
+        #: Pull the date out of vehicle_data_yyyymmdd.csv to check recency
+        date_string = str(latest_csv).rsplit('_')[-1].split('.')[0]
+        try:
+            csv_datetime = datetime.date(int(date_string[:4]),
+                                         int(date_string[4:6]),
+                                         int(date_string[6:]))
+        except ValueError as e:
+            err_msg = f'Can\'t parse date from last csv: {latest_csv}'
+            self.log.exception(err_msg)
+            raise e
+
+        #: Only continue if the latest is within specified number of days
+        today = datetime.date.today()
+        previous_dates = [today - datetime.timedelta(days=i)
+                          for i in range(previous_days + 1)]
+        if previous_days > 0 and csv_datetime not in previous_dates:
+            err_msg = (f'Latest csv "{latest_csv}" not within {previous_days}'
+                       f' days of today ({today})')
+            self.log.exception(err_msg)
+            raise ValueError(err_msg)
+
+        return str(latest_csv), date_string
+
+
+    def get_map_layer(self, project_path, fc_to_add):
+        '''
+        Get a reference to map and layer objects that can be used to create a
+        service definition.
+        project_path:       A path string to a ArcGIS Pro project with only one
+                            map and no other layers (all layers will be removed)
+        fc_to_add:          A path string to the feature class containing the
+                            features to be uploaded to ArcGIS Online. Will be
+                            added as a layer to the project.
+
+        returns: arcpy.mp.Layer and arcpy.mp.Map object references
+        '''
+
+        self.log.info(f'Getting map from {project_path}...')
+        project = arcpy.mp.ArcGISProject(project_path)
+        sharing_map = project.listMaps()[0]
+        for layer in sharing_map.listLayers():
+            self.log.info(f'Removing {layer} from {sharing_map.name}...')
+            sharing_map.removeLayer(layer)
+
+        self.log.info(f'Adding {fc_to_add} as layer to {sharing_map.name}...')
+        layer = sharing_map.addDataFromPath(fc_to_add)
+        project.save()
+
+        return layer, sharing_map
+
+
+    def update_agol_feature_service(self, sharing_map, layer,
+                                    feature_service_name, sddraft_path,
+                                    sd_path, sd_item):
+        '''
+        Helper method for updating an AGOL hosted feature service from an ArcGIS
+        Pro arcpy.mp.Map and .Layer objects.
+
+        sharing_map:            An arcpy.mp.Map object containing the layer to
+                                be shared.
+        layer:                  The arcpy.mp.Layer object created from the
+                                feature class that holds your new data.
+        feature_service_name:   The name of the existing Hosted Feature Service.
+                                Must match exactly, otherwise the publish step
+                                will fail.
+        sddraft_path, sd_path:  Strings of the paths to save the service
+                                definition draft and final files.
+        sd_item:                The URL of the service definition item on AGOL
+                                originally used to publish the hosted feature
+                                service.
+        '''
+
+        sharing_draft = sharing_map.getWebLayerSharingDraft(
+            'HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
+        sharing_draft.exportToSDDraft(sddraft_path)
+        arcpy.server.StageService(sddraft_path, sd_path)
+        sd_item.update(data=sd_path)
+        sd_item.publish(overwrite=True)
+
 
     def process(self):
 
@@ -156,8 +159,8 @@ class AGOLVehiclesPallet(Pallet):
             sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
         #: Get the latest file
-        source_path, source_date = get_latest_csv(
-            temp_csv_dir, self.log, previous_days=7)
+        source_path, source_date = self.get_latest_csv(
+            temp_csv_dir, previous_days=7)
 
         self.log.info(
             f'Converting {source_path} to feature class {temp_fc_path}...')
@@ -180,12 +183,12 @@ class AGOLVehiclesPallet(Pallet):
                 sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
                 self.log.info('Getting map and layer...')
-                layer, fleet_map = get_map_layer(
-                    secrets.PROJECT_PATH, temp_fc_path, self.log)
+                layer, fleet_map = self.get_map_layer(secrets.PROJECT_PATH,
+                                                      temp_fc_path)
 
                 #: draft, stage, update, publish
                 self.log.info('Staging and updating...')
-                update_agol_feature_service(
+                self.update_agol_feature_service(
                     fleet_map, layer, feature_service_name, sddraft_path,
                     sd_path, sd_item)
 
