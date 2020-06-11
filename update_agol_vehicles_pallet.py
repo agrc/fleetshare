@@ -170,7 +170,8 @@ class AGOLVehiclesPallet(Pallet):
         try_count = 1
         while True:
             try:
-                #: Overwrite existing AGOL service
+                self.log.info(f'Updating service, try {try_count} of 3...')
+
                 self.log.info(
                     f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
                 gis = arcgis.gis.GIS(
@@ -183,7 +184,7 @@ class AGOLVehiclesPallet(Pallet):
                     secrets.PROJECT_PATH, temp_fc_path, self.log)
 
                 #: draft, stage, update, publish
-                self.log.info(f'Staging and updating...')
+                self.log.info('Staging and updating...')
                 update_agol_feature_service(
                     fleet_map, layer, feature_service_name, sddraft_path,
                     sd_path, sd_item)
@@ -192,7 +193,7 @@ class AGOLVehiclesPallet(Pallet):
                 self.log.info('Updating item description...')
                 feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
                 description = ('Vehicle location data obtained from Fleet; '
-                            f'updated on {source_date}')
+                               f'updated on {source_date}')
                 feature_item.update(
                     item_properties={'description': description})
 
@@ -201,12 +202,17 @@ class AGOLVehiclesPallet(Pallet):
                            f'AGOL. Attempt {try_count} of 3.')
                 self.log.exception(err_msg)
 
+                #: Fail for good if 3x retry fails, otherwise increment, sleep,
+                #: and retry
                 if try_count > 3:
+                    err_msg = 'Connection errors; giving up after 3 retries'
+                    self.log.exception(err_msg)
                     raise e
                 try_count += 1
                 sleep(10)
                 continue
-                
+
+            #: If we haven't gotten an error, break out of while True.
             break
 
 if __name__ == '__main__':
