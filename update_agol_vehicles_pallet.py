@@ -57,6 +57,7 @@ def get_latest_csv(temp_csv_dir, log, previous_days=-1):
     if previous_days > 0 and csv_datetime not in previous_dates:
         err_msg = (f'Latest csv "{latest_csv}" not within {previous_days} days'
                    f' of today ({today})')
+        log.exception(err_msg)
         raise ValueError(err_msg)
 
     return str(latest_csv), date_string
