@@ -1,4 +1,3 @@
-  
 [MASTER]
 load-plugins=pylint_quotes
 max-line-length=120
