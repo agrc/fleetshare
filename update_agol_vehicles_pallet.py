@@ -8,7 +8,8 @@ import datetime
 import os
 
 from pathlib import Path
-from urllib.error import HTTPError
+from time import sleep
+from urllib.error import HTTPError, URLError
 
 import arcgis
 import arcpy
@@ -166,35 +167,47 @@ class AGOLVehiclesPallet(Pallet):
             coordinate_system=wgs84)
         self.log.debug(result.getMessages())
 
-        try:
-            #: Overwrite existing AGOL service
-            self.log.info(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
-            gis = arcgis.gis.GIS(
-                'https://www.arcgis.com', secrets.AGOL_USERNAME,
-                secrets.AGOL_PASSWORD)
-            sd_item = gis.content.get(secrets.SD_ITEM_ID)
+        try_count = 1
+        while True:
+            try:
+                #: Overwrite existing AGOL service
+                self.log.info(
+                    f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
+                gis = arcgis.gis.GIS(
+                    'https://www.arcgis.com', secrets.AGOL_USERNAME,
+                    secrets.AGOL_PASSWORD)
+                sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
-            self.log.info('Getting map and layer...')
-            layer, fleet_map = get_map_layer(
-                secrets.PROJECT_PATH, temp_fc_path, self.log)
+                self.log.info('Getting map and layer...')
+                layer, fleet_map = get_map_layer(
+                    secrets.PROJECT_PATH, temp_fc_path, self.log)
 
-            #: draft, stage, update, publish
-            self.log.info(f'Staging and updating...')
-            update_agol_feature_service(
-                fleet_map, layer, feature_service_name, sddraft_path,
-                sd_path, sd_item)
+                #: draft, stage, update, publish
+                self.log.info(f'Staging and updating...')
+                update_agol_feature_service(
+                    fleet_map, layer, feature_service_name, sddraft_path,
+                    sd_path, sd_item)
 
-            #: Update item description
-            self.log.info('Updating item description...')
-            feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
-            description = ('Vehicle location data obtained from Fleet; '
-                           f'updated on {source_date}')
-            feature_item.update(item_properties={'description': description})
-        except HTTPError as e:
-            err_msg = (f'Connection error with {e.url}, probably related to '
-                       'connection with AGOL.')
-            self.log.exception(err_msg)
-            raise e
+                #: Update item description
+                self.log.info('Updating item description...')
+                feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
+                description = ('Vehicle location data obtained from Fleet; '
+                            f'updated on {source_date}')
+                feature_item.update(
+                    item_properties={'description': description})
+
+            except (HTTPError, URLError) as e:
+                err_msg = ('Connection error, probably due to connection with '
+                           f'AGOL. Attempt {try_count} of 3.')
+                self.log.exception(err_msg)
+
+                if try_count > 3:
+                    raise e
+                try_count += 1
+                sleep(10)
+                continue
+                
+            break
 
 if __name__ == '__main__':
     pallet = AGOLVehiclesPallet()
