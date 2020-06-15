@@ -183,6 +183,9 @@ class AGOLVehiclesPallet(Pallet):
                 sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
                 self.log.info('Getting map and layer...')
+                arcpy.SignInToPortal(arcpy.GetActivePortalURL(),
+                                     secrets.AGOL_USERNAME,
+                                     secrets.AGOL_PASSWORD)
                 layer, fleet_map = self.get_map_layer(secrets.PROJECT_PATH,
                                                       temp_fc_path)
 
