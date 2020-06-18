@@ -198,8 +198,11 @@ class AGOLVehiclesPallet(Pallet):
                 #: Update item description
                 self.log.info('Updating item description...')
                 feature_item = gis.content.get(secrets.FEATURES_ITEM_ID)
+                year = source_date[:4]
+                month = source_date[4:6]
+                day = source_date[6:]
                 description = ('Vehicle location data obtained from Fleet; '
-                               f'updated on {source_date}')
+                               f'updated on {year}-{month}-{day}')
                 feature_item.update(
                     item_properties={'description': description})
 
