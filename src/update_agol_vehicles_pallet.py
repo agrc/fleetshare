@@ -21,10 +21,10 @@ import fleetshare_secrets as secrets
 
 
 class AGOLVehiclesPallet(Pallet):
+
     def requires_processing(self):
         #: No crates, run process every time
         return True
-
 
     def get_latest_csv(self, temp_csv_dir, previous_days=-1):
         '''
@@ -41,17 +41,14 @@ class AGOLVehiclesPallet(Pallet):
         try:
             latest_csv = csvs[-1]
         except IndexError as e:
-            err_msg = ('Can\'t get last "vehicle_data_*.csv" file- are there '
-                       'any csv files?')
+            err_msg = ('Can\'t get last "vehicle_data_*.csv" file- are there ' 'any csv files?')
             self.log.exception(err_msg)
             raise e
 
         #: Pull the date out of vehicle_data_yyyymmdd.csv to check recency
         date_string = str(latest_csv).rsplit('_')[-1].split('.')[0]
         try:
-            csv_datetime = datetime.date(int(date_string[:4]),
-                                         int(date_string[4:6]),
-                                         int(date_string[6:]))
+            csv_datetime = datetime.date(int(date_string[:4]), int(date_string[4:6]), int(date_string[6:]))
         except ValueError as e:
             err_msg = f'Can\'t parse date from last csv: {latest_csv}'
             self.log.exception(err_msg)
@@ -59,16 +56,13 @@ class AGOLVehiclesPallet(Pallet):
 
         #: Only continue if the latest is within specified number of days
         today = datetime.date.today()
-        previous_dates = [today - datetime.timedelta(days=i)
-                          for i in range(previous_days + 1)]
+        previous_dates = [today - datetime.timedelta(days=i) for i in range(previous_days + 1)]
         if previous_days > 0 and csv_datetime not in previous_dates:
-            err_msg = (f'Latest csv "{latest_csv}" not within {previous_days}'
-                       f' days of today ({today})')
+            err_msg = (f'Latest csv "{latest_csv}" not within {previous_days}' f' days of today ({today})')
             self.log.exception(err_msg)
             raise ValueError(err_msg)
 
         return str(latest_csv), date_string
-
 
     def get_map_layer(self, project_path, fc_to_add):
         '''
@@ -96,10 +90,7 @@ class AGOLVehiclesPallet(Pallet):
 
         return layer, sharing_map
 
-
-    def update_agol_feature_service(self, sharing_map, layer,
-                                    feature_service_name, sddraft_path,
-                                    sd_path, sd_item):
+    def update_agol_feature_service(self, sharing_map, layer, feature_service_name, sddraft_path, sd_path, sd_item):
         '''
         Helper method for updating an AGOL hosted feature service from an ArcGIS
         Pro arcpy.mp.Map and .Layer objects.
@@ -118,13 +109,16 @@ class AGOLVehiclesPallet(Pallet):
                                 service.
         '''
 
-        sharing_draft = sharing_map.getWebLayerSharingDraft(
-            'HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
+        for item in [sddraft_path, sd_path]:
+            if arcpy.Exists(item):
+                self.log.info(f'Deleting {item} prior to use...')
+                arcpy.Delete_management(item)
+
+        sharing_draft = sharing_map.getWebLayerSharingDraft('HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
         sharing_draft.exportToSDDraft(sddraft_path)
         arcpy.server.StageService(sddraft_path, sd_path)
         sd_item.update(data=sd_path)
         sd_item.publish(overwrite=True)
-
 
     def process(self):
 
@@ -133,8 +127,7 @@ class AGOLVehiclesPallet(Pallet):
 
         temp_csv_dir = os.path.join(arcpy.env.scratchFolder, 'fleet')
         temp_fc_path = os.path.join(arcpy.env.scratchGDB, feature_service_name)
-        sddraft_path = os.path.join(arcpy.env.scratchFolder,
-                                    f'{feature_service_name}.sddraft')
+        sddraft_path = os.path.join(arcpy.env.scratchFolder, f'{feature_service_name}.sddraft')
         sd_path = sddraft_path[:-5]
 
         paths = [temp_csv_dir, temp_fc_path, sddraft_path, sd_path]
@@ -147,27 +140,25 @@ class AGOLVehiclesPallet(Pallet):
         if not secrets.KNOWNHOSTS or not os.path.isfile(secrets.KNOWNHOSTS):
             raise FileNotFoundError(
                 f'known_hosts file {secrets.KNOWNHOSTS} not found. Please '
-                'create with ssh-keyscan.')
+                'create with ssh-keyscan.'
+            )
 
         #: Download all the files in the upload folder on sftp to temp_csv_dir
-        self.log.info(
-            f'Downloading all files from {secrets.SFTP_HOST}/upload...')
+        self.log.info(f'Downloading all files from {secrets.SFTP_HOST}/upload...')
         connection_opts = pysftp.CnOpts(knownhosts=secrets.KNOWNHOSTS)
         with pysftp.Connection(
-                secrets.SFTP_HOST, username=secrets.SFTP_USERNAME,
-                password=secrets.SFTP_PASSWORD, cnopts=connection_opts) as sftp:
+            secrets.SFTP_HOST, username=secrets.SFTP_USERNAME, password=secrets.SFTP_PASSWORD, cnopts=connection_opts
+        ) as sftp:
             sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
         #: Get the latest file
-        source_path, source_date = self.get_latest_csv(
-            temp_csv_dir, previous_days=7)
+        source_path, source_date = self.get_latest_csv(temp_csv_dir, previous_days=7)
 
-        self.log.info(
-            f'Converting {source_path} to feature class {temp_fc_path}...')
+        self.log.info(f'Converting {source_path} to feature class {temp_fc_path}...')
         wgs84 = arcpy.SpatialReference(4326)
         result = arcpy.management.XYTableToPoint(
-            source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE',
-            coordinate_system=wgs84)
+            source_path, temp_fc_path, 'LONGITUDE', 'LATITUDE', coordinate_system=wgs84
+        )
         self.log.debug(result.getMessages())
 
         try_count = 1
@@ -175,25 +166,17 @@ class AGOLVehiclesPallet(Pallet):
             try:
                 self.log.info(f'Updating service, try {try_count} of 3...')
 
-                self.log.info(
-                    f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
-                gis = arcgis.gis.GIS(
-                    'https://www.arcgis.com', secrets.AGOL_USERNAME,
-                    secrets.AGOL_PASSWORD)
+                self.log.info(f'Connecting to AGOL as {secrets.AGOL_USERNAME}...')
+                gis = arcgis.gis.GIS('https://www.arcgis.com', secrets.AGOL_USERNAME, secrets.AGOL_PASSWORD)
                 sd_item = gis.content.get(secrets.SD_ITEM_ID)
 
                 self.log.info('Getting map and layer...')
-                arcpy.SignInToPortal(
-                    arcpy.GetActivePortalURL(), secrets.AGOL_USERNAME,
-                    secrets.AGOL_PASSWORD)
-                layer, fleet_map = self.get_map_layer(secrets.PROJECT_PATH,
-                                                      temp_fc_path)
+                arcpy.SignInToPortal(arcpy.GetActivePortalURL(), secrets.AGOL_USERNAME, secrets.AGOL_PASSWORD)
+                layer, fleet_map = self.get_map_layer(secrets.PROJECT_PATH, temp_fc_path)
 
                 #: draft, stage, update, publish
                 self.log.info('Staging and updating...')
-                self.update_agol_feature_service(
-                    fleet_map, layer, feature_service_name, sddraft_path,
-                    sd_path, sd_item)
+                self.update_agol_feature_service(fleet_map, layer, feature_service_name, sddraft_path, sd_path, sd_item)
 
                 #: Update item description
                 self.log.info('Updating item description...')
@@ -201,14 +184,11 @@ class AGOLVehiclesPallet(Pallet):
                 year = source_date[:4]
                 month = source_date[4:6]
                 day = source_date[6:]
-                description = ('Vehicle location data obtained from Fleet; '
-                               f'updated on {year}-{month}-{day}')
-                feature_item.update(
-                    item_properties={'description': description})
+                description = ('Vehicle location data obtained from Fleet; ' f'updated on {year}-{month}-{day}')
+                feature_item.update(item_properties={'description': description})
 
             except (HTTPError, URLError) as e:
-                err_msg = ('Connection error, probably due to connection with '
-                           f'AGOL. Attempt {try_count} of 3.')
+                err_msg = ('Connection error, probably due to connection with ' f'AGOL. Attempt {try_count} of 3.')
                 self.log.exception(err_msg)
 
                 #: Fail for good if 3x retry fails, otherwise increment, sleep,
@@ -223,6 +203,7 @@ class AGOLVehiclesPallet(Pallet):
 
             #: If we haven't gotten an error, break out of while True.
             break
+
 
 if __name__ == '__main__':
     pallet = AGOLVehiclesPallet()
