@@ -184,8 +184,8 @@ class AGOLVehiclesPallet(Pallet):
                 description = (f'Vehicle location data obtained from Fleet; updated on {year}-{month}-{day}')
                 feature_item.update(item_properties={'description': description})
 
-            except (HTTPError, URLError) as e:
-                err_msg = (f'Connection error, probably due to connection with AGOL. Attempt {try_count} of 3.')
+            except Exception as e:
+                err_msg = (f'Error on attempt {try_count} of 3; retrying.')
                 self.log.exception(err_msg)
 
                 #: Fail for good if 3x retry fails, otherwise increment, sleep,
@@ -194,8 +194,8 @@ class AGOLVehiclesPallet(Pallet):
                     err_msg = 'Connection errors; giving up after 3 retries'
                     self.log.exception(err_msg)
                     raise e
+                sleep(try_count**2)
                 try_count += 1
-                sleep(10)
                 continue
 
             #: If we haven't gotten an error, break out of while True.
