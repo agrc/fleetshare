@@ -41,7 +41,7 @@ class AGOLVehiclesPallet(Pallet):
         try:
             latest_csv = csvs[-1]
         except IndexError as e:
-            err_msg = ('Can\'t get last "vehicle_data_*.csv" file- are there any csv files?')
+            err_msg = 'Can\'t get last "vehicle_data_*.csv" file- are there any csv files?'
             self.log.exception(err_msg)
             raise e
 
@@ -58,7 +58,7 @@ class AGOLVehiclesPallet(Pallet):
         today = datetime.date.today()
         previous_dates = [today - datetime.timedelta(days=i) for i in range(previous_days + 1)]
         if previous_days > 0 and csv_datetime not in previous_dates:
-            err_msg = (f'Latest csv "{latest_csv}" not within {previous_days} days of today ({today})')
+            err_msg = f'Latest csv "{latest_csv}" not within {previous_days} days of today ({today})'
             self.log.exception(err_msg)
             raise ValueError(err_msg)
 
@@ -181,11 +181,11 @@ class AGOLVehiclesPallet(Pallet):
                 year = source_date[:4]
                 month = source_date[4:6]
                 day = source_date[6:]
-                description = (f'Vehicle location data obtained from Fleet; updated on {year}-{month}-{day}')
+                description = f'Vehicle location data obtained from Fleet; updated on {year}-{month}-{day}'
                 feature_item.update(item_properties={'description': description})
 
             except Exception as e:
-                err_msg = (f'Error on attempt {try_count} of 3; retrying.')
+                err_msg = f'Error on attempt {try_count} of 3; retrying.'
                 self.log.exception(err_msg)
 
                 #: Fail for good if 3x retry fails, otherwise increment, sleep,
