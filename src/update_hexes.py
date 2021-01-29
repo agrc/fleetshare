@@ -8,6 +8,13 @@ import pandas as pd
 
 
 def get_wfh_eins(survey_path, monthly_employee_data_path, output_csv_path):
+    '''Create a csv of the employee data that have matching records in the WFH survey
+
+    Args:
+        survey_path (Path): xls/x file of the WFH survey data
+        monthly_employee_data_path (Path): xls/x of employee data
+        output_csv_path (Path): output csv file
+    '''
 
     print('Reading WFH survey...')
     survey_df = pd.read_excel(survey_path, engine='openpyxl')
