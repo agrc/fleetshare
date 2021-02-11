@@ -84,8 +84,9 @@ def geocode_points(points_csv, out_fc, locator, addr_field, zip_field):
         zip_field (str): The zip code field in points_csv
     '''
 
-    geocode_fc = r'A:\telework_survey\wfh.gdb\geocoded_test_intermediate'
-    # geocode_fc = r'memory\temp_geocode_fc'
+    #: using 'memory' seems to limit the geocode to 1000
+    # geocode_fc = r'A:\telework_survey\wfh.gdb\geocoded_test_intermediate'
+    geocode_fc = r'memory\temp_geocode_fc'
 
     fields_str = f"'Street or Intersection' {addr_field} VISIBLE NONE;'City or Placename' <None> VISIBLE NONE;'ZIP Code' {zip_field} VISIBLE NONE"
     print('Geocoding (this could take a while)...')
@@ -97,6 +98,17 @@ def geocode_points(points_csv, out_fc, locator, addr_field, zip_field):
     query = "Status = 'M'"
     arcpy.management.MakeFeatureLayer(geocode_fc, 'geocode_layer', query)
     arcpy.management.CopyFeatures('geocode_layer', out_fc)
+
+    #: Testing environment stuff
+    environments = arcpy.ListEnvironments()
+
+    # Sort the environment names
+    environments.sort()
+
+    for environment in environments:
+        # Format and print each environment and its current setting.
+        # (The environments are accessed by key from arcpy.env.)
+        print("{0:<30}: {1}".format(environment, arcpy.env[environment]))
 
 
 if __name__ == '__main__':
