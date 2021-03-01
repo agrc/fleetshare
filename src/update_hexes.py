@@ -11,20 +11,26 @@ import arcpy
 import arcgis
 
 
-def get_wfh_eins(survey_path, monthly_dhrm_data, output_csv_path):
+def get_wfh_eins(report_dir_path, monthly_dhrm_data, output_csv_path):
     '''Create a csv of the employee data that have matching records in the WFH survey
 
     Args:
-        survey_path (Path): xlsx file of the WFH survey data
+        report_dir_path (Path): directory of non-cumulative csvs of the WFH survey data
         monthly_dhrm_data (DataFrame): monthly employee data
         output_csv_path (Path): output csv file
     '''
 
-    print(f'\nReading WFH survey {survey_path}...')
-    survey_df = pd.read_excel(survey_path, engine='openpyxl')
+    print(f'\nReading WFH surveys from {report_dir_path}...')
 
-    #: Drop double header row
-    survey_df.drop(survey_df.index[0])
+    wfh_reports = report_dir_path.glob('*.csv')
+    report_dfs = []
+
+    #: Read in each report, trim out weird row, and concat into a single data frame
+    for report in wfh_reports:
+        report_df = pd.read_csv(report, header=0)
+        report_df.drop([0, 1], inplace=True)
+        report_dfs.append(report_df)
+    survey_df = pd.concat(report_dfs)
 
     #: Drop rows that aren't new or that are UTNG (they don't use EINs)
     non_update_df = survey_df[(survey_df['New'] == 'Yes') & ~(survey_df['Q5'] == 'UTNG')]
@@ -138,26 +144,33 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
         hex_fc (str): Path to hexes to use for binning
         output_fc (str): Location of final output
         simple_count (bool, optional): Just bin (default) or both bin and add category counts. Defaults to True.
-        within_table (bool, optional): Output table for bin grouping if simple_count=False. Defaults to None.
+        within_table (str, optional): Output table for bin grouping if simple_count=False. Defaults to None.
     '''
 
     #: Works in the built-in interpreter, but not in conda??? WTF???
     print('Summarizing...')
     #: First, create a layer and dq to remove null geometries
-    query = "Status = 'M'"
-    arcpy.management.MakeFeatureLayer(points_fc, 'points_layer', query)
-    print(arcpy.management.GetCount('points_layer'))
+    #: TODO: remove layer if it already exists
+    # if arcpy.Exists('points_layer'):
+    #     print('Deleting existing points_layer...')
+    #     arcpy.management.Delete('points_layer')
+    # query = "Status = 'M'"
+    # arcpy.management.MakeFeatureLayer(points_fc, 'points_layer', query)
+    # print(arcpy.management.GetCount('points_layer'))
+    print(arcpy.management.GetCount(points_fc))
     print(arcpy.management.GetCount(hex_fc))
 
     #: Run a simple summarize and return if groupings aren't needed
     if simple_count:
-        arcpy.analysis.SummarizeWithin(hex_fc, 'points_layer', output_fc, keep_all_polygons='ONLY_INTERSECTING')
+        arcpy.analysis.SummarizeWithin(hex_fc, points_fc, output_fc, keep_all_polygons='ONLY_INTERSECTING')
         return
+
+    # within_table = arcpy.env.scratchGDB + '/within_table'
 
     #: Otherwise, summarize with groupings and add group info to output_fc
     arcpy.analysis.SummarizeWithin(
         hex_fc,
-        'points_layer',
+        points_fc,
         output_fc,
         keep_all_polygons='ONLY_INTERSECTING',
         group_field='USER_DEPT_NAME',
@@ -201,6 +214,19 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
             updater.updateRow(row)
 
 
+def remove_single_count_hexes(input_hex_fc, output_hex_fc):
+    '''Create a new feature class with hexes that only have 2 or more points
+
+    Args:
+        input_hex_fc (str): The hexagons with point counts
+        output_hex_fc (str): Output path for trimmed data
+    '''
+
+    query = "Point_Count > 1"
+    arcpy.management.MakeFeatureLayer(input_hex_fc, 'hex_layer', query)
+    arcpy.management.CopyFeatures('hex_layer', output_hex_fc)
+
+
 def symbolize_new_layer(new_data, template_layer, output_layer_file):
     '''Create a .lyrx file from new_data symbolized according to template_layer
 
@@ -210,7 +236,12 @@ def symbolize_new_layer(new_data, template_layer, output_layer_file):
         output_layer_file (str): Output path for new .lyrx file.
     '''
 
-    new_layer = arcpy.management.ApplySymbologyFromLayer(new_data, template_layer)
+    if arcpy.Exists(output_layer_file):
+        print(f'Removing existing layer file {output_layer_file}...')
+        arcpy.management.Delete(output_layer_file)
+
+    print(f'Symbolizing layer based on {template_layer}...')
+    new_layer = arcpy.management.ApplySymbologyFromLayer(new_data, template_layer, update_symbology='UPDATE')
     arcpy.management.SaveToLayerFile(new_layer, output_layer_file)
 
 
@@ -229,6 +260,10 @@ def add_layer_to_map(project_path, map_name, lyrx_file):
     print(f'Getting {map_name} from {project_path}...')
     project = arcpy.mp.ArcGISProject(project_path)
     sharing_map = project.listMaps(map_name)[0]
+    for layer in sharing_map.listLayers():
+        print(f'Removing {layer} from {sharing_map.name}...')
+        sharing_map.removeLayer(layer)
+        project.save()
 
     print(f'Adding {lyrx_file} as layer to {sharing_map.name}...')
     #: Do we need to first create the layer object, or can we pass directly using addDataFromPath?
@@ -239,9 +274,7 @@ def add_layer_to_map(project_path, map_name, lyrx_file):
     return layer, sharing_map
 
 
-def update_agol_feature_service(
-    sharing_map, layer, feature_service_name, sddraft_path, sd_path, sd_item, feature_layer_item
-):
+def update_agol_feature_service(sharing_map, layer, feature_service_name, sd_item, feature_layer_item):
     '''Helper method for updating an AGOL hosted feature service from an ArcGIS Pro arcpy.mp.Map and .Layer objects.
 
     Args:
@@ -254,8 +287,7 @@ def update_agol_feature_service(
         feature_layer_item (arcgis.Item): Target feature service AGOL item
     '''
 
-    #: TODO: make these two files internal temp files, not parameters
-    sddraft_path = join(arcpy.env.scratchFolder, f'{feature_service_name}.sddraft')
+    sddraft_path = join(arcpy.env.scratchFolder, f'{feature_service_name.replace(" ", "_")}.sddraft')
     sd_path = sddraft_path[:-5]
     for item in [sddraft_path, sd_path]:
         if arcpy.Exists(item):
@@ -272,10 +304,13 @@ def update_agol_feature_service(
     }
     thumbnail = feature_layer_item.download_thumbnail()
 
+    print(f'Creating SD for {feature_service_name}...')
     sharing_draft = sharing_map.getWebLayerSharingDraft('HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
     sharing_draft.exportToSDDraft(sddraft_path)
     arcpy.server.StageService(sddraft_path, sd_path)
+    print(f'Updating service definition...')
     sd_item.update(data=sd_path)
+    print(f'Publishing service definition...')
     sd_item.publish(overwrite=True)
 
     #: Reapply item info
@@ -307,32 +342,60 @@ def get_item(portal, username, item_id, password=None):
 if __name__ == '__main__':
     employee_data_path = Path(r'A:\monthly_data\2021_02_01.xls')
 
-    wfh_survey_data_path = Path(r'A:\telework_survey\Teleworking Onboarding Survey_December 14, 2020_08.45.xlsx')
-    wfh_csv_out_path = Path(r'A:\telework_survey\wfh_records_test.csv')
-    wfh_geocoded_points_path = Path(r'A:\telework_survey\wfh.gdb\wfh_geocoded')
-    wfh_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\wfh_hexes')
-    wfh_lyrx_path = Path(r'A:\telework_survey\wfh_hexes_layer.lyrx')
-    wfh_sd_itemid = ''
-    wfh_fs_itemid = ''
-    wfh_fs_name = ''
+    scratch_gdb = Path(r'A:\telework_survey\auto\scratch.gdb')
+    second_scratch_gdb = Path(r'A:\telework_survey\auto\scratch2.gdb')
+    # arcpy.env.scratchWorkspace = r'A:\telework_survey\auto\scratch.gdb'
+
+    # wfh_survey_data_path = Path(r'A:\telework_survey\Teleworking Onboarding Survey_December 14, 2020_08.45.xlsx')
+    wfh_survey_data_path = Path(r'A:\telework_survey\wfh_reports')
+    wfh_csv_out_path = Path(r'A:\telework_survey\auto\wfh_records.csv')
+    # wfh_geocoded_points_path = Path(r'A:\telework_survey\wfh.gdb\wfh_geocoded')
+    # wfh_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\wfh_hexes')
+    # trimmed_wfh_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\wfh_hexes_2_or_more')
+    wfh_geocoded_points_path = scratch_gdb / 'wfh_geocoded'
+    wfh_hexes_fc_path = scratch_gdb / 'wfh_hexes'
+    trimmed_wfh_hexes_fc_path = scratch_gdb / 'wfh_hexes_2_or_more'
+    wfh_lyrx_path = Path(r'A:\telework_survey\auto\wfh_hexes_layer.lyrx')
+    wfh_sd_itemid = '74bc74a422c04894a7a07d9a9b30712e'
+    wfh_fs_itemid = '8fdac662e45041bab24fd75d09f02626'
+    wfh_fs_name = 'wfh_eins_20210127_5mihex_2more'
 
     operator_data_path = Path(r"A:\telework_survey\Operators.xlsx")
-    operator_csv_out_path = Path(r'A:\telework_survey\operator_records_test.csv')
-    operator_geocoded_points_path = Path(r'A:\telework_survey\wfh.gdb\operator_geocoded')
+    operator_csv_out_path = Path(r'A:\telework_survey\auto\operator_records.csv')
+    # operator_geocoded_points_path = Path(r'A:\telework_survey\wfh.gdb\operator_geocoded')
+    # operator_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\operator_hexes')
+    # operator_group_table_path = Path(r'A:\telework_survey\wfh.gdb\operator_group_table')
+    # trimmed_operator_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\operator_hexes_2_exor_more')
+    operator_geocoded_points_path = second_scratch_gdb / 'operator_geocoded'
+    operator_hexes_fc_path = second_scratch_gdb / 'operator_hexes'
+    operator_group_table_path = second_scratch_gdb / 'operator_group_table'
+    trimmed_operator_hexes_fc_path = second_scratch_gdb / 'operator_hexes_2_or_more'
+    operator_lyrx_path = Path(r'A:\telework_survey\auto\operator_hexes_layer.lyrx')
+    operator_sd_itemid = '11777ebe8fff43beb2485b3a7c83573b'
+    operator_fs_itemid = '93e0e4f20b48426881c17d7ff8ce0874'
+    operator_fs_name = 'operator_eins_20210127_5mihex_test_2more'
 
     locator_path = Path(r'C:\temp\locators\AGRC_CompositeLocator.loc')
     hex_fc_path = Path(r'C:\gis\Projects\Maps2020\Maps2020.gdb\StateHex_5sqmi_planar')
-    hex_template_lyrx_path = Path(r'')
-    project_path = Path(r'')
-    map_name = ''
+    hex_template_lyrx_path = Path(r'A:\telework_survey\auto\hex_symbology_template.lyrx')
+    project_path = Path(r'A:\telework_survey\auto\upload_project\upload_project.aprx')
+    map_name = 'UploadMap'
 
     portal = 'https://utah.maps.arcgis.com'
     username = 'Jake.Adams@UtahAGRC'
 
+    print('Pre-cleanup')
+    if arcpy.Exists(str(scratch_gdb)):
+        print(f'Deleting existing {scratch_gdb}...')
+        arcpy.management.Delete(str(scratch_gdb))
+    print(f'Creating {scratch_gdb}...')
+    arcpy.management.CreateFileGDB(str(scratch_gdb.parent), str(scratch_gdb.name))
+
     dhrm_data = get_dhrm_dataframe(employee_data_path)
 
+    print('\n --- Work From Home --- \n')
+
     get_wfh_eins(wfh_survey_data_path, dhrm_data, wfh_csv_out_path)
-    get_operator_eins(operator_data_path, dhrm_data, operator_csv_out_path)
     geocode_points(
         str(wfh_csv_out_path),
         str(wfh_geocoded_points_path),
@@ -340,6 +403,38 @@ if __name__ == '__main__':
         'real_addr',
         'real_zip',
     )
+
+    hex_bin(str(wfh_geocoded_points_path), str(hex_fc_path), str(wfh_hexes_fc_path), simple_count=True)
+
+    remove_single_count_hexes(str(wfh_hexes_fc_path), str(trimmed_wfh_hexes_fc_path))
+
+    #: Tested
+    #: TODO: fix range updates- even without setting styling in the map, it doesn't update based on the new layer's styling (layer file has proper ranges)
+    #: Giving up on this for now, too.
+    # symbolize_new_layer(str(wfh_hexes_fc_path), str(hex_template_lyrx_path), str(wfh_lyrx_path))
+
+    #: Because layer symbology isn't working now, just update from the feature class
+    # sharing_layer, sharing_map = add_layer_to_map(str(project_path), map_name, str(wfh_lyrx_path))
+    sharing_layer, sharing_map = add_layer_to_map(str(project_path), map_name, str(trimmed_wfh_hexes_fc_path))
+
+    gis = arcgis.gis.GIS(portal, username)
+    wfh_sd_item = gis.content.get(wfh_sd_itemid)
+    wfh_fs_item = gis.content.get(wfh_fs_itemid)
+
+    update_agol_feature_service(sharing_map, sharing_layer, wfh_fs_name, wfh_sd_item, wfh_fs_item)
+
+    #: Approved Operators
+    #:
+    print('\n --- Approved Operators --- \n')
+
+    print('Second Cleanup...')
+    if arcpy.Exists(str(second_scratch_gdb)):
+        print(f'Deleting existing {second_scratch_gdb}...')
+        arcpy.management.Delete(str(second_scratch_gdb))
+    print(f'Creating {second_scratch_gdb}...')
+    arcpy.management.CreateFileGDB(str(second_scratch_gdb.parent), str(second_scratch_gdb.name))
+
+    get_operator_eins(operator_data_path, dhrm_data, operator_csv_out_path)
     geocode_points(
         str(operator_csv_out_path),
         str(operator_geocoded_points_path),
@@ -347,16 +442,25 @@ if __name__ == '__main__':
         'real_addr',
         'real_zip',
     )
-
-    hex_bin(str(wfh_geocoded_points_path), str(hex_fc_path), str(wfh_hexes_fc_path), simple_count=True)
-
-    symbolize_new_layer(str(wfh_hexes_fc_path), str(hex_template_lyrx_path), str(wfh_lyrx_path))
-
-    sharing_map, sharing_layer = add_layer_to_map(str(project_path), map_name, str(wfh_lyrx_path))
-
-    wfh_sd_item = get_item(portal, username, wfh_sd_itemid)
-    wfh_fs_item = get_item(portal, username, wfh_fs_itemid)
-
-    update_agol_feature_service(
-        sharing_map, sharing_layer, wfh_fs_name, str(sddraft_path), str(sd_path), wfh_sd_item, wfh_fs_item
+    hex_bin(
+        str(operator_geocoded_points_path),
+        str(hex_fc_path),
+        str(operator_hexes_fc_path),
+        simple_count=False,
+        within_table=str(operator_group_table_path)
     )
+
+    remove_single_count_hexes(str(operator_hexes_fc_path), str(trimmed_operator_hexes_fc_path))
+
+    sharing_layer, sharing_map = add_layer_to_map(str(project_path), map_name, str(trimmed_operator_hexes_fc_path))
+
+    # gis = arcgis.gis.GIS(portal, username)
+    operator_sd_item = gis.content.get(operator_sd_itemid)
+    operator_fs_item = gis.content.get(operator_fs_itemid)
+
+    update_agol_feature_service(sharing_map, sharing_layer, operator_fs_name, operator_sd_item, operator_fs_item)
+
+    print('Post-cleanup')
+    if arcpy.Exists(str(scratch_gdb)):
+        print(f'Deleting {scratch_gdb}...')
+        arcpy.management.Delete(str(scratch_gdb))
