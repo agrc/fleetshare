@@ -54,6 +54,12 @@ def get_wfh_eins(survey_path, monthly_employee_data_path, output_csv_path):
         f'Employee records with matching EIN in WFH survey: {wfh_records.shape[0]} (out of {wfh_eins_int.count()} EINs from survey)'
     )
 
+    # operators_path = r"A:\telework_survey\Operators.xlsx"
+    # operators_df = pd.read_excel(operators_path, engine='openpyxl')
+    # cleaned_operators = operators_df[(operators_df['EIN']>=100000) & (operators_df['EIN'] <= 999999)]
+    # op_merged = pd.merge(monthly_df, cleaned_operators, how='inner', left_on='EINint', right_on='EIN')
+    # op_merged.to_csv(r'A:\telework_survey\operator_records.csv')
+
     print(f'Saving output data to {output_csv_path}...')
     wfh_records.to_csv(output_csv_path)
 
