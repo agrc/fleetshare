@@ -24,6 +24,12 @@ If instead you want to add fleetshare to a test/production Forklift environment,
 
 After the environment is created, copy `fleetshare_secrets_template.py` to `fleetshare_secrets.py` and add the relevant info for each item. The `.gitignore` file for the project excludes `fleetshare_secrets.py` from being tracked by git. You should verify that it is not being added to version control on your local setup.
 
+### update_hexes.py
+
+A secondary script meant to be run manually at a certain interval (monthly, weekly, something like that) based on when the data comes from DHRM and Fleet. Uses data to update hexes in specified feature classes.
+
+Currently not very pretty or engineered, but it works (kind of).
+
 #### known_hosts
 
 The script relies on having a known_hosts file (listed in the secrets file) for verifying the identity of the sftp server prior to connecting to it. By default, this file is not included in version control (and should never be!) and must be generated prior to use. The following commands can be run on the command line to generate the known_hosts file (assuming a version of openSSH is installed):
