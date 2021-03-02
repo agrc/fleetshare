@@ -128,6 +128,33 @@ def get_operator_eins(operators_path, monthly_dhrm_data, output_csv_path):
     op_merged.to_csv(output_csv_path)
 
 
+def hex_bin(points_fc, hex_fc, output_fc, simple_count=True):
+    '''Bin points_fc into hexes from hex_fc, adding total category counts if needed
+
+    Args:
+        points_fc (str): Path to points feature class
+        hex_fc (str): Path to hexes to use for binning
+        output_fc (str): Location of final output
+        simple_count (bool, optional): Just bin (default) or both bin and add category counts. Defaults to True.
+    '''
+
+    pass
+
+
+def update_feature_service(source_feature_class, feature_service_item_id, org, username, password=None):
+    '''Overwrite feature_service_url with data from source_feature_class
+
+    Args:
+        source_feature_class (str): Path to the source data for overwritting
+        feature_service_item_id (str): Item ID for the feature service to be overwritten
+        org (str): URL for the target AGOL org/portal
+        username (str): Portal username
+        password (str, optional): Portal password. If not provided (default), script will prompt for password. Defaults to None.
+    '''
+
+    pass
+
+
 if __name__ == '__main__':
     employee_data_path = Path(r'A:\monthly_data\2021_02_01.xls')
 
@@ -145,7 +172,17 @@ if __name__ == '__main__':
 
     get_wfh_eins(wfh_survey_data_path, dhrm_data, wfh_csv_out_path)
     get_operator_eins(operator_data_path, dhrm_data, operator_csv_out_path)
-    geocode_points(str(wfh_csv_out_path), str(wfh_geocoded_points_path), str(locator_path), 'real_addr', 'real_zip')
     geocode_points(
-        str(operator_csv_out_path), str(operator_geocoded_points_path), str(locator_path), 'real_addr', 'real_zip'
+        str(wfh_csv_out_path),
+        str(wfh_geocoded_points_path),
+        str(locator_path),
+        'real_addr',
+        'real_zip',
+    )
+    geocode_points(
+        str(operator_csv_out_path),
+        str(operator_geocoded_points_path),
+        str(locator_path),
+        'real_addr',
+        'real_zip',
     )
