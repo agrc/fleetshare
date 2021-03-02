@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 import arcpy
+import arcgis
 
 
 def get_wfh_eins(survey_path, monthly_dhrm_data, output_csv_path):
@@ -128,7 +129,7 @@ def get_operator_eins(operators_path, monthly_dhrm_data, output_csv_path):
     op_merged.to_csv(output_csv_path)
 
 
-def hex_bin(points_fc, hex_fc, output_fc, simple_count=True):
+def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
     '''Bin points_fc into hexes from hex_fc, adding total category counts if needed
 
     Args:
@@ -136,23 +137,161 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True):
         hex_fc (str): Path to hexes to use for binning
         output_fc (str): Location of final output
         simple_count (bool, optional): Just bin (default) or both bin and add category counts. Defaults to True.
+        within_table (bool, optional): Output table for bin grouping if simple_count=False. Defaults to None.
     '''
 
-    pass
+    #: Works in the built-in interpreter, but not in conda??? WTF???
+    print('Summarizing...')
+    #: First, create a layer and dq to remove null geometries
+    query = "Status = 'M'"
+    arcpy.management.MakeFeatureLayer(points_fc, 'points_layer', query)
+    print(arcpy.management.GetCount('points_layer'))
+    print(arcpy.management.GetCount(hex_fc))
+    #: Run Summarize Within first to drastically reduce the number of hexes to loop over
+    arcpy.analysis.SummarizeWithin(
+        hex_fc,
+        'points_layer',
+        output_fc,
+        keep_all_polygons='ONLY_INTERSECTING',
+        group_field='USER_DEPT_NAME',
+        out_group_table=within_table
+    )
+
+    #: Loop through all values in DEPT_NAME, creating a field for each and then adding counts from out_grouped_table to these fields, then create a custom popup with Arcade and a host of filters from that?
+
+    print('Joining...')
+    #: Get our table into a dataframe we can play with
+    grouped_table_dict = {}
+    with arcpy.da.SearchCursor(within_table, '*') as table_cursor:
+        grouped_table_dict = {row[0]: row[1:] for row in table_cursor}
+
+    groups_df = pd.DataFrame.from_dict(grouped_table_dict, orient='index', columns=['JoinID', 'Dept', 'Count'])
+    all_departments = groups_df['Dept'].unique()
+
+    #: pivot so each row is now a unqiue join id and the columns are the counts of each department's count value
+    joins = pd.pivot(data=groups_df, values='Count', index='JoinID', columns=['Dept'])
+    joins.fillna(0, inplace=True)
+
+    #: dump our dataframe to a dict we can use in an insert cursor
+    #: {joinid: {dept1:count, dept2:count}}
+    joins_dict = joins.to_dict('index')
+
+    #: prep output feature class
+    new_fields = [[name, 'LONG'] for name in all_departments]
+    arcpy.management.AddFields(output_fc, new_fields)
+
+    print('Writing output data...')
+    #: Write our new data to the output feature class
+    insert_fields = ['Join_ID']
+    insert_fields.extend([name.replace(' ', '_') for name in all_departments])
+    with arcpy.da.UpdateCursor(output_fc, insert_fields) as updater:
+        for row in updater:
+            join_id = row[0]
+            new_list = [join_id]
+            for department in all_departments:
+                new_list.append(joins_dict[join_id][department])
+            row = new_list
+            updater.updateRow(row)
 
 
-def update_feature_service(source_feature_class, feature_service_item_id, org, username, password=None):
-    '''Overwrite feature_service_url with data from source_feature_class
+def symbolize_new_layer(new_data, template_layer, output_layer_file):
+    '''Create a .lyrx file from new_data symbolized according to template_layer
 
     Args:
-        source_feature_class (str): Path to the source data for overwritting
-        feature_service_item_id (str): Item ID for the feature service to be overwritten
-        org (str): URL for the target AGOL org/portal
-        username (str): Portal username
-        password (str, optional): Portal password. If not provided (default), script will prompt for password. Defaults to None.
+        new_data (str): Path to new data
+        template_layer (str): Path to layer file symbolized according to desired output
+        output_layer_file (str): Output path for new .lyrx file.
     '''
 
-    pass
+    new_layer = arcpy.management.ApplySymbologyFromLayer(new_data, template_layer)
+    arcpy.management.SaveToLayerFile(new_layer, output_layer_file)
+
+
+def add_layer_to_map(project_path, map_name, lyrx_file):
+    '''Add lyrx_file to map_name in project_path, return the map and layer objects for future sharing
+
+    Args:
+        project_path (str): Path to the .aprx project file
+        map_name (str): Name of the desired map within the project
+        lyrx_file (str): Path to the .lyrx file to add to the map
+
+    Returns:
+        (arcpy.mp.Layer, arcpy.mp.Map): Tuple of layer and map objects.
+    '''
+
+    print(f'Getting {map_name} from {project_path}...')
+    project = arcpy.mp.ArcGISProject(project_path)
+    sharing_map = project.listMaps(map_name)[0]
+
+    print(f'Adding {lyrx_file} as layer to {sharing_map.name}...')
+    #: Do we need to first create the layer object, or can we pass directly using addDataFromPath?
+    # layer_file = arcpy.mp.LayerFile(lyrx_file)
+    layer = sharing_map.addDataFromPath(lyrx_file)
+    project.save()
+
+    return layer, sharing_map
+
+
+def update_agol_feature_service(
+    sharing_map, layer, feature_service_name, sddraft_path, sd_path, sd_item, feature_layer_item
+):
+    '''Helper method for updating an AGOL hosted feature service from an ArcGIS Pro arcpy.mp.Map and .Layer objects.
+
+    Args:
+        sharing_map (arcpy.mp.Map): Map object containing the layer to be shared.
+        layer (arcpy.mp.Layer): Layer object created from the feature class that holds your new data.
+        feature_service_name (str): Name of the existing Hosted Feature Service. Must match exactly, otherwise the publish step will fail.
+        sddraft_path (str): Path to save the service definition draft
+        sd_path (str): Path to save the service definition.
+        sd_item (arcgis.Item): Service definition item on AGOL originally used to publish the hosted feature service.
+        feature_layer_item (arcgis.Item): Target feature service AGOL item
+    '''
+
+    for item in [sddraft_path, sd_path]:
+        if arcpy.Exists(item):
+            print(f'Deleting {item} prior to use...')
+            arcpy.Delete_management(item)
+
+    #: Get item info that can get overwritten
+    item_information = {
+        'title': feature_layer_item.title,
+        'tags': feature_layer_item.tags,
+        'snippet': feature_layer_item.snippet,
+        'description': feature_layer_item.description,
+        'accessInformation': feature_layer_item.accessInformation
+    }
+    thumbnail = feature_layer_item.download_thumbnail()
+
+    sharing_draft = sharing_map.getWebLayerSharingDraft('HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
+    sharing_draft.exportToSDDraft(sddraft_path)
+    arcpy.server.StageService(sddraft_path, sd_path)
+    sd_item.update(data=sd_path)
+    sd_item.publish(overwrite=True)
+
+    #: Reapply item info
+    print('Resetting all of the stuff that publishing breaks...')
+    #: get new copy of feature layer item after republishing-- Do we need this? (please say no)
+    # feature_layer_item = retry(lambda: arcgis.gis.Item(self.gis, feature_layer_id), self.log)
+    feature_layer_item.update(item_information, thumbnail=thumbnail)
+
+
+def get_item(portal, username, item_id, password=None):
+    '''Log into an arcgis portal and get the item referenced by item_id.
+
+    Args:
+        portal (str): URL to the Portal to log in to
+        username (str): Portal username
+        item_id (str): AGOL item id for the desired item
+        password (str, optional): Portal password. Will prompt for if not provided (Default). Defaults to None.
+
+    Returns:
+        arcgis.Item: The desired item object.
+    '''
+
+    print(f'Logging into {portal} as {username}...')
+    gis = arcgis.gis.GIS(portal, username, password)
+    item = gis.content.get(item_id)
+    return item
 
 
 if __name__ == '__main__':
@@ -186,3 +325,10 @@ if __name__ == '__main__':
         'real_addr',
         'real_zip',
     )
+
+    hex_bin(wfh_geocoded_points_path, hex_fc_path, wfh_hexes_fc, simple_count=True)
+    symbolize_new_layer(wfh_hexes_fc, hex_template_lyrx, wfh_lyrx_path)
+    sharing_map, sharing_layer = add_layer_to_map(proj_path, map_name, wfh_lyrx_path)
+    wfh_sd_item = get_item(portal, username, wfh_sd_itemid)
+    wfh_fs_item = get_item(portal, username, wfh_fs_itemid)
+    update_agol_feature_service(sharing_map, sharing_layer, wfh_name, sddraft_path, sd_path, wfh_sd_item, wfh_fs_item)
