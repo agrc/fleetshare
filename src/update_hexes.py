@@ -1,14 +1,64 @@
-#: To create hexes:
-#: Summarize within- StateHex_5sqmi, wfh_eins, out to wfh_eins_date_5mihex
+'''Ok, it's not pretty, but it gets the job done.
+    1. Set all the relevant variables in the specific_info and common_info classes
+    2. Call from the command line twice, once for WFH and again for approved operators:
+        python update_hexes.py w
+        python update_hexes.py o
+        (arcpy.SummarizeWithin _really_ does not like to be called twice in the same script)
+'''
 
+from dataclasses import dataclass, field
 from os.path import join
 from pathlib import Path
+from sys import argv
 
 import numpy as np
 import pandas as pd
 
 import arcpy
 import arcgis
+
+
+@dataclass
+class SpecificInfo:
+    method: str
+    data_source: Path
+    sd_itemid: str
+    fs_itemid: str
+    fs_name: str
+    simple_summary: bool = field(init=False)
+
+    def __post_init__(self):
+        if self.method == 'wfh':
+            self.simple_summary = True
+        elif self.method == 'operator':
+            self.simple_summary = False
+        else:
+            raise NotImplementedError(f'Method {self.method} not recognized...')
+
+
+@dataclass
+class CommonInfo:
+    employee_data_path: Path
+    locator_path: Path
+    hex_fc_path: Path
+    project_path: Path
+    map_name: str
+    portal: str
+    username: str
+    scratch_gdb: Path
+    working_dir_path: Path
+    csv_path: Path = field(init=False)
+    geocoded_points_path: Path = field(init=False)
+    hexes_fc_path: Path = field(init=False)
+    within_table_path: Path = field(init=False)
+    trimmed_hex_fc_path: Path = field(init=False)
+
+    def __post_init__(self):
+        self.csv_path = self.working_dir_path / 'ein_records.csv'
+        self.geocoded_points_path = self.scratch_gdb / 'geocoded_points'
+        self.hexes_fc_path = self.scratch_gdb / 'hexes'
+        self.within_table_path = self.scratch_gdb / 'within_table'
+        self.trimmed_hex_fc_path = self.scratch_gdb / 'trimmed_hexes'
 
 
 def get_wfh_eins(report_dir_path, monthly_dhrm_data, output_csv_path):
@@ -165,8 +215,6 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
         arcpy.analysis.SummarizeWithin(hex_fc, points_fc, output_fc, keep_all_polygons='ONLY_INTERSECTING')
         return
 
-    # within_table = arcpy.env.scratchGDB + '/within_table'
-
     #: Otherwise, summarize with groupings and add group info to output_fc
     arcpy.analysis.SummarizeWithin(
         hex_fc,
@@ -281,8 +329,6 @@ def update_agol_feature_service(sharing_map, layer, feature_service_name, sd_ite
         sharing_map (arcpy.mp.Map): Map object containing the layer to be shared.
         layer (arcpy.mp.Layer): Layer object created from the feature class that holds your new data.
         feature_service_name (str): Name of the existing Hosted Feature Service. Must match exactly, otherwise the publish step will fail.
-        sddraft_path (str): Path to save the service definition draft
-        sd_path (str): Path to save the service definition.
         sd_item (arcgis.Item): Service definition item on AGOL originally used to publish the hosted feature service.
         feature_layer_item (arcgis.Item): Target feature service AGOL item
     '''
@@ -339,128 +385,104 @@ def get_item(portal, username, item_id, password=None):
     return item
 
 
-if __name__ == '__main__':
-    employee_data_path = Path(r'A:\monthly_data\2021_02_01.xls')
+def one_function_to_rule_them_all(common_info: CommonInfo, specific_info: SpecificInfo):
+    '''Calls all the previous functions in appropriate order
 
-    scratch_gdb = Path(r'A:\telework_survey\auto\scratch.gdb')
-    second_scratch_gdb = Path(r'A:\telework_survey\auto\scratch2.gdb')
-    # arcpy.env.scratchWorkspace = r'A:\telework_survey\auto\scratch.gdb'
+    Args:
+        common_info (CommonInfo): Info common to all layers (wfh and operator)
+        specific_info (SpecificInfo): Info specific to a particular layer (wfh or operator)
 
-    # wfh_survey_data_path = Path(r'A:\telework_survey\Teleworking Onboarding Survey_December 14, 2020_08.45.xlsx')
-    wfh_survey_data_path = Path(r'A:\telework_survey\wfh_reports')
-    wfh_csv_out_path = Path(r'A:\telework_survey\auto\wfh_records.csv')
-    # wfh_geocoded_points_path = Path(r'A:\telework_survey\wfh.gdb\wfh_geocoded')
-    # wfh_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\wfh_hexes')
-    # trimmed_wfh_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\wfh_hexes_2_or_more')
-    wfh_geocoded_points_path = scratch_gdb / 'wfh_geocoded'
-    wfh_hexes_fc_path = scratch_gdb / 'wfh_hexes'
-    trimmed_wfh_hexes_fc_path = scratch_gdb / 'wfh_hexes_2_or_more'
-    wfh_lyrx_path = Path(r'A:\telework_survey\auto\wfh_hexes_layer.lyrx')
-    wfh_sd_itemid = '74bc74a422c04894a7a07d9a9b30712e'
-    wfh_fs_itemid = '8fdac662e45041bab24fd75d09f02626'
-    wfh_fs_name = 'wfh_eins_20210127_5mihex_2more'
+    Raises:
+        NotImplementedError: If a method other than 'wfh' or 'operator' is provided
+    '''
 
-    operator_data_path = Path(r"A:\telework_survey\Operators.xlsx")
-    operator_csv_out_path = Path(r'A:\telework_survey\auto\operator_records.csv')
-    # operator_geocoded_points_path = Path(r'A:\telework_survey\wfh.gdb\operator_geocoded')
-    # operator_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\operator_hexes')
-    # operator_group_table_path = Path(r'A:\telework_survey\wfh.gdb\operator_group_table')
-    # trimmed_operator_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\operator_hexes_2_exor_more')
-    operator_geocoded_points_path = second_scratch_gdb / 'operator_geocoded'
-    operator_hexes_fc_path = second_scratch_gdb / 'operator_hexes'
-    operator_group_table_path = second_scratch_gdb / 'operator_group_table'
-    trimmed_operator_hexes_fc_path = second_scratch_gdb / 'operator_hexes_2_or_more'
-    operator_lyrx_path = Path(r'A:\telework_survey\auto\operator_hexes_layer.lyrx')
-    operator_sd_itemid = '11777ebe8fff43beb2485b3a7c83573b'
-    operator_fs_itemid = '93e0e4f20b48426881c17d7ff8ce0874'
-    operator_fs_name = 'operator_eins_20210127_5mihex_test_2more'
+    print('Getting AGOL references...')
+    gis = arcgis.gis.GIS(common_info.portal, common_info.username)
+    sd_item = gis.content.get(specific_info.sd_itemid)
+    fs_item = gis.content.get(specific_info.fs_itemid)
 
-    locator_path = Path(r'C:\temp\locators\AGRC_CompositeLocator.loc')
-    hex_fc_path = Path(r'C:\gis\Projects\Maps2020\Maps2020.gdb\StateHex_5sqmi_planar')
-    hex_template_lyrx_path = Path(r'A:\telework_survey\auto\hex_symbology_template.lyrx')
-    project_path = Path(r'A:\telework_survey\auto\upload_project\upload_project.aprx')
-    map_name = 'UploadMap'
+    print('Cleaning up scratch areas...')
+    if arcpy.Exists(str(common_info.scratch_gdb)):
+        print(f'Deleting existing {common_info.scratch_gdb}...')
+        arcpy.management.Delete(str(common_info.scratch_gdb))
+    print(f'Creating {common_info.scratch_gdb}...')
+    arcpy.management.CreateFileGDB(str(common_info.scratch_gdb.parent), str(common_info.scratch_gdb.name))
 
-    portal = 'https://utah.maps.arcgis.com'
-    username = 'Jake.Adams@UtahAGRC'
+    dhrm_data = get_dhrm_dataframe(common_info.employee_data_path)
 
-    print('Pre-cleanup')
-    if arcpy.Exists(str(scratch_gdb)):
-        print(f'Deleting existing {scratch_gdb}...')
-        arcpy.management.Delete(str(scratch_gdb))
-    print(f'Creating {scratch_gdb}...')
-    arcpy.management.CreateFileGDB(str(scratch_gdb.parent), str(scratch_gdb.name))
+    if specific_info.method == 'wfh':
+        get_wfh_eins(specific_info.data_source, dhrm_data, common_info.csv_path)
+    elif specific_info.method == 'operator':
+        get_operator_eins(specific_info.data_source, dhrm_data, common_info.csv_path)
+    else:
+        raise NotImplementedError(f'Method {specific_info.method} not recognized...')
 
-    dhrm_data = get_dhrm_dataframe(employee_data_path)
-
-    print('\n --- Work From Home --- \n')
-
-    get_wfh_eins(wfh_survey_data_path, dhrm_data, wfh_csv_out_path)
     geocode_points(
-        str(wfh_csv_out_path),
-        str(wfh_geocoded_points_path),
-        str(locator_path),
+        str(common_info.csv_path),
+        str(common_info.geocoded_points_path),
+        str(common_info.locator_path),
         'real_addr',
         'real_zip',
     )
 
-    hex_bin(str(wfh_geocoded_points_path), str(hex_fc_path), str(wfh_hexes_fc_path), simple_count=True)
-
-    remove_single_count_hexes(str(wfh_hexes_fc_path), str(trimmed_wfh_hexes_fc_path))
-
-    #: Tested
-    #: TODO: fix range updates- even without setting styling in the map, it doesn't update based on the new layer's styling (layer file has proper ranges)
-    #: Giving up on this for now, too.
-    # symbolize_new_layer(str(wfh_hexes_fc_path), str(hex_template_lyrx_path), str(wfh_lyrx_path))
-
-    #: Because layer symbology isn't working now, just update from the feature class
-    # sharing_layer, sharing_map = add_layer_to_map(str(project_path), map_name, str(wfh_lyrx_path))
-    sharing_layer, sharing_map = add_layer_to_map(str(project_path), map_name, str(trimmed_wfh_hexes_fc_path))
-
-    gis = arcgis.gis.GIS(portal, username)
-    wfh_sd_item = gis.content.get(wfh_sd_itemid)
-    wfh_fs_item = gis.content.get(wfh_fs_itemid)
-
-    update_agol_feature_service(sharing_map, sharing_layer, wfh_fs_name, wfh_sd_item, wfh_fs_item)
-
-    #: Approved Operators
-    #:
-    print('\n --- Approved Operators --- \n')
-
-    print('Second Cleanup...')
-    if arcpy.Exists(str(second_scratch_gdb)):
-        print(f'Deleting existing {second_scratch_gdb}...')
-        arcpy.management.Delete(str(second_scratch_gdb))
-    print(f'Creating {second_scratch_gdb}...')
-    arcpy.management.CreateFileGDB(str(second_scratch_gdb.parent), str(second_scratch_gdb.name))
-
-    get_operator_eins(operator_data_path, dhrm_data, operator_csv_out_path)
-    geocode_points(
-        str(operator_csv_out_path),
-        str(operator_geocoded_points_path),
-        str(locator_path),
-        'real_addr',
-        'real_zip',
-    )
     hex_bin(
-        str(operator_geocoded_points_path),
-        str(hex_fc_path),
-        str(operator_hexes_fc_path),
-        simple_count=False,
-        within_table=str(operator_group_table_path)
+        str(common_info.geocoded_points_path),
+        str(common_info.hex_fc_path),
+        str(common_info.hexes_fc_path),
+        simple_count=specific_info.simple_summary,
+        within_table=str(common_info.within_table_path)
     )
 
-    remove_single_count_hexes(str(operator_hexes_fc_path), str(trimmed_operator_hexes_fc_path))
+    remove_single_count_hexes(str(common_info.hexes_fc_path), str(common_info.trimmed_hex_fc_path))
 
-    sharing_layer, sharing_map = add_layer_to_map(str(project_path), map_name, str(trimmed_operator_hexes_fc_path))
+    sharing_layer, sharing_map = add_layer_to_map(
+        str(common_info.project_path), common_info.map_name, str(common_info.trimmed_hex_fc_path)
+    )
 
-    # gis = arcgis.gis.GIS(portal, username)
-    operator_sd_item = gis.content.get(operator_sd_itemid)
-    operator_fs_item = gis.content.get(operator_fs_itemid)
+    update_agol_feature_service(sharing_map, sharing_layer, specific_info.fs_name, sd_item, fs_item)
 
-    update_agol_feature_service(sharing_map, sharing_layer, operator_fs_name, operator_sd_item, operator_fs_item)
 
-    print('Post-cleanup')
-    if arcpy.Exists(str(scratch_gdb)):
-        print(f'Deleting {scratch_gdb}...')
-        arcpy.management.Delete(str(scratch_gdb))
+if __name__ == '__main__':
+
+    common_info = CommonInfo(
+        employee_data_path=Path(r'A:\monthly_data\2021_02_01.xls'),
+        locator_path=Path(r'C:\temp\locators\AGRC_CompositeLocator.loc'),
+        hex_fc_path=Path(r'C:\gis\Projects\Maps2020\Maps2020.gdb\StateHex_5sqmi_planar'),
+        project_path=Path(r'A:\telework_survey\auto\upload_project\upload_project.aprx'),
+        scratch_gdb=Path(r'A:\telework_survey\auto\scratch.gdb'),
+        working_dir_path=Path(r'A:\telework_survey\auto'),
+        map_name='UploadMap',
+        portal='https://utah.maps.arcgis.com',
+        username='Jake.Adams@UtahAGRC',
+    )
+
+    wfh_info = SpecificInfo(
+        method='wfh',
+        # scratch_gdb=Path(r'A:\telework_survey\auto\scratch.gdb'),
+        data_source=Path(r'A:\telework_survey\wfh_reports'),
+        # working_dir_path=Path(r'A:\telework_survey\auto'),
+        sd_itemid='74bc74a422c04894a7a07d9a9b30712e',
+        fs_itemid='8fdac662e45041bab24fd75d09f02626',
+        fs_name='wfh_eins_20210127_5mihex_2more',
+        # simple_summary=True,
+    )
+
+    operator_info = SpecificInfo(
+        method='operator',
+        # scratch_gdb=Path(r'A:\telework_survey\auto\scratch.gdb'),
+        data_source=Path(r"A:\telework_survey\Operators.xlsx"),
+        # working_dir_path=Path(r'A:\telework_survey\auto'),
+        sd_itemid='11777ebe8fff43beb2485b3a7c83573b',
+        fs_itemid='93e0e4f20b48426881c17d7ff8ce0874',
+        fs_name='operator_eins_20210127_5mihex_test_2more',
+        # simple_summary=False,
+    )
+
+    if argv[1] == 'w':
+        one_function_to_rule_them_all(common_info, wfh_info)
+    elif argv[1] == 'o':
+        one_function_to_rule_them_all(common_info, operator_info)
+    elif not argv[1]:
+        print('Must specify a method ("m" or "o").')
+    else:
+        print(f'Method "{argv[1]}" not available.')
