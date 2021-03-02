@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import arcpy
+
 
 def get_wfh_eins(survey_path, monthly_employee_data_path, output_csv_path):
     '''Create a csv of the employee data that have matching records in the WFH survey
@@ -71,9 +73,38 @@ def get_wfh_eins(survey_path, monthly_employee_data_path, output_csv_path):
     wfh_records.to_csv(output_csv_path)
 
 
+def geocode_points(points_csv, out_fc, locator, addr_field, zip_field):
+    '''Geocode the points_csv, only saving the points that have a valid match to out_fc
+
+    Args:
+        points_csv (str): The csv holding the points
+        out_fc (str): The feature class to save the geocoded points
+        locator (str): The full path to the geolocator to use
+        addr_field (str): The address field in points_csv
+        zip_field (str): The zip code field in points_csv
+    '''
+
+    geocode_fc = r'A:\telework_survey\wfh.gdb\geocoded_test_intermediate'
+    # geocode_fc = r'memory\temp_geocode_fc'
+
+    fields_str = f"'Street or Intersection' {addr_field} VISIBLE NONE;'City or Placename' <None> VISIBLE NONE;'ZIP Code' {zip_field} VISIBLE NONE"
+    print('Geocoding (this could take a while)...')
+    geocode_results = arcpy.geocoding.GeocodeAddresses(points_csv, locator, fields_str, geocode_fc)
+
+    print(geocode_results.getMessages())
+
+    print('Copying out only the matched points...')
+    query = "Status = 'M'"
+    arcpy.management.MakeFeatureLayer(geocode_fc, 'geocode_layer', query)
+    arcpy.management.CopyFeatures('geocode_layer', out_fc)
+
+
 if __name__ == '__main__':
     survey_path = Path(r'A:\telework_survey\Teleworking Onboarding Survey_December 14, 2020_08.45.xlsx')
     employee_data_path = Path(r'A:\monthly_data\2020_12_01.xls')
     out_path = Path(r'A:\telework_survey\wfh_records_test.csv')
+    geocoded_points_path = Path(r'A:\telework_survey\wfh.gdb\geocoded_test')
+    locator_path = Path(r'C:\temp\locators\AGRC_CompositeLocator.loc')
 
-    get_wfh_eins(survey_path, employee_data_path, out_path)
+    # get_wfh_eins(survey_path, employee_data_path, out_path)
+    geocode_points(str(out_path), str(geocoded_points_path), str(locator_path), 'real_addr', 'real_zip')
