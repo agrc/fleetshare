@@ -197,16 +197,9 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
         within_table (str, optional): Output table for bin grouping if simple_count=False. Defaults to None.
     '''
 
-    #: Works in the built-in interpreter, but not in conda??? WTF???
     print('Summarizing...')
-    #: First, create a layer and dq to remove null geometries
-    #: TODO: remove layer if it already exists
-    # if arcpy.Exists('points_layer'):
-    #     print('Deleting existing points_layer...')
-    #     arcpy.management.Delete('points_layer')
-    # query = "Status = 'M'"
-    # arcpy.management.MakeFeatureLayer(points_fc, 'points_layer', query)
-    # print(arcpy.management.GetCount('points_layer'))
+
+    #: Print counts as a sanity check
     print(arcpy.management.GetCount(points_fc))
     print(arcpy.management.GetCount(hex_fc))
 
@@ -224,8 +217,6 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
         group_field='USER_DEPT_NAME',
         out_group_table=within_table
     )
-
-    #: Loop through all values in DEPT_NAME, creating a field for each and then adding counts from out_grouped_table to these fields, then create a custom popup with Arcade and a host of filters from that?
 
     print('Joining...')
     #: Get our table into a dataframe we can play with
@@ -314,8 +305,6 @@ def add_layer_to_map(project_path, map_name, lyrx_file):
         project.save()
 
     print(f'Adding {lyrx_file} as layer to {sharing_map.name}...')
-    #: Do we need to first create the layer object, or can we pass directly using addDataFromPath?
-    # layer_file = arcpy.mp.LayerFile(lyrx_file)
     layer = sharing_map.addDataFromPath(lyrx_file)
     project.save()
 
@@ -361,8 +350,6 @@ def update_agol_feature_service(sharing_map, layer, feature_service_name, sd_ite
 
     #: Reapply item info
     print('Resetting all of the stuff that publishing breaks...')
-    #: get new copy of feature layer item after republishing-- Do we need this? (please say no)
-    # feature_layer_item = retry(lambda: arcgis.gis.Item(self.gis, feature_layer_id), self.log)
     feature_layer_item.update(item_information, thumbnail=thumbnail)
 
 
@@ -458,24 +445,18 @@ if __name__ == '__main__':
 
     wfh_info = SpecificInfo(
         method='wfh',
-        # scratch_gdb=Path(r'A:\telework_survey\auto\scratch.gdb'),
         data_source=Path(r'A:\telework_survey\wfh_reports'),
-        # working_dir_path=Path(r'A:\telework_survey\auto'),
         sd_itemid='74bc74a422c04894a7a07d9a9b30712e',
         fs_itemid='8fdac662e45041bab24fd75d09f02626',
         fs_name='wfh_eins_20210127_5mihex_2more',
-        # simple_summary=True,
     )
 
     operator_info = SpecificInfo(
         method='operator',
-        # scratch_gdb=Path(r'A:\telework_survey\auto\scratch.gdb'),
         data_source=Path(r"A:\telework_survey\Operators.xlsx"),
-        # working_dir_path=Path(r'A:\telework_survey\auto'),
         sd_itemid='11777ebe8fff43beb2485b3a7c83573b',
         fs_itemid='93e0e4f20b48426881c17d7ff8ce0874',
         fs_name='operator_eins_20210127_5mihex_test_2more',
-        # simple_summary=False,
     )
 
     if argv[1] == 'w':
