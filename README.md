@@ -30,6 +30,15 @@ A secondary script meant to be run manually at a certain interval (monthly, week
 
 Currently not very pretty or engineered, but it works (kind of).
 
+Usage:
+
+1. Set all the relevant variables in the `specific_info` and `common_info` instantiations
+1. Call the script from the command line twice, once for WFH and again for approved operators:
+   - `python update_hexes.py w`
+   - `python update_hexes.py o`
+
+(arcpy.SummarizeWithin _really_ does not like to be called twice in the same script)
+
 #### known_hosts
 
 The script relies on having a known_hosts file (listed in the secrets file) for verifying the identity of the sftp server prior to connecting to it. By default, this file is not included in version control (and should never be!) and must be generated prior to use. The following commands can be run on the command line to generate the known_hosts file (assuming a version of openSSH is installed):
