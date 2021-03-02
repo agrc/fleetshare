@@ -1,6 +1,7 @@
 #: To create hexes:
 #: Summarize within- StateHex_5sqmi, wfh_eins, out to wfh_eins_date_5mihex
 
+from os.path import join
 from pathlib import Path
 
 import numpy as np
@@ -147,7 +148,13 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
     arcpy.management.MakeFeatureLayer(points_fc, 'points_layer', query)
     print(arcpy.management.GetCount('points_layer'))
     print(arcpy.management.GetCount(hex_fc))
-    #: Run Summarize Within first to drastically reduce the number of hexes to loop over
+
+    #: Run a simple summarize and return if groupings aren't needed
+    if simple_count:
+        arcpy.analysis.SummarizeWithin(hex_fc, 'points_layer', output_fc, keep_all_polygons='ONLY_INTERSECTING')
+        return
+
+    #: Otherwise, summarize with groupings and add group info to output_fc
     arcpy.analysis.SummarizeWithin(
         hex_fc,
         'points_layer',
@@ -168,7 +175,7 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
     groups_df = pd.DataFrame.from_dict(grouped_table_dict, orient='index', columns=['JoinID', 'Dept', 'Count'])
     all_departments = groups_df['Dept'].unique()
 
-    #: pivot so each row is now a unqiue join id and the columns are the counts of each department's count value
+    #: pivot so each row is now a unique join id and the columns are the counts of each department's count value
     joins = pd.pivot(data=groups_df, values='Count', index='JoinID', columns=['Dept'])
     joins.fillna(0, inplace=True)
 
@@ -247,6 +254,9 @@ def update_agol_feature_service(
         feature_layer_item (arcgis.Item): Target feature service AGOL item
     '''
 
+    #: TODO: make these two files internal temp files, not parameters
+    sddraft_path = join(arcpy.env.scratchFolder, f'{feature_service_name}.sddraft')
+    sd_path = sddraft_path[:-5]
     for item in [sddraft_path, sd_path]:
         if arcpy.Exists(item):
             print(f'Deleting {item} prior to use...')
@@ -300,12 +310,24 @@ if __name__ == '__main__':
     wfh_survey_data_path = Path(r'A:\telework_survey\Teleworking Onboarding Survey_December 14, 2020_08.45.xlsx')
     wfh_csv_out_path = Path(r'A:\telework_survey\wfh_records_test.csv')
     wfh_geocoded_points_path = Path(r'A:\telework_survey\wfh.gdb\wfh_geocoded')
+    wfh_hexes_fc_path = Path(r'A:\telework_survey\wfh.gdb\wfh_hexes')
+    wfh_lyrx_path = Path(r'A:\telework_survey\wfh_hexes_layer.lyrx')
+    wfh_sd_itemid = ''
+    wfh_fs_itemid = ''
+    wfh_fs_name = ''
 
     operator_data_path = Path(r"A:\telework_survey\Operators.xlsx")
     operator_csv_out_path = Path(r'A:\telework_survey\operator_records_test.csv')
     operator_geocoded_points_path = Path(r'A:\telework_survey\wfh.gdb\operator_geocoded')
 
     locator_path = Path(r'C:\temp\locators\AGRC_CompositeLocator.loc')
+    hex_fc_path = Path(r'C:\gis\Projects\Maps2020\Maps2020.gdb\StateHex_5sqmi_planar')
+    hex_template_lyrx_path = Path(r'')
+    project_path = Path(r'')
+    map_name = ''
+
+    portal = 'https://utah.maps.arcgis.com'
+    username = 'Jake.Adams@UtahAGRC'
 
     dhrm_data = get_dhrm_dataframe(employee_data_path)
 
@@ -326,9 +348,15 @@ if __name__ == '__main__':
         'real_zip',
     )
 
-    hex_bin(wfh_geocoded_points_path, hex_fc_path, wfh_hexes_fc, simple_count=True)
-    symbolize_new_layer(wfh_hexes_fc, hex_template_lyrx, wfh_lyrx_path)
-    sharing_map, sharing_layer = add_layer_to_map(proj_path, map_name, wfh_lyrx_path)
+    hex_bin(str(wfh_geocoded_points_path), str(hex_fc_path), str(wfh_hexes_fc_path), simple_count=True)
+
+    symbolize_new_layer(str(wfh_hexes_fc_path), str(hex_template_lyrx_path), str(wfh_lyrx_path))
+
+    sharing_map, sharing_layer = add_layer_to_map(str(project_path), map_name, str(wfh_lyrx_path))
+
     wfh_sd_item = get_item(portal, username, wfh_sd_itemid)
     wfh_fs_item = get_item(portal, username, wfh_fs_itemid)
-    update_agol_feature_service(sharing_map, sharing_layer, wfh_name, sddraft_path, sd_path, wfh_sd_item, wfh_fs_item)
+
+    update_agol_feature_service(
+        sharing_map, sharing_layer, wfh_fs_name, str(sddraft_path), str(sd_path), wfh_sd_item, wfh_fs_item
+    )
