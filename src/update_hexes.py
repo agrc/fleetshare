@@ -432,9 +432,9 @@ def one_function_to_rule_them_all(common_info: CommonInfo, specific_info: Specif
 if __name__ == '__main__':
 
     common_info = CommonInfo(
-        employee_data_path=Path(r'A:\monthly_data\2021_02_01.xls'),
+        employee_data_path=Path(r'A:\monthly_data\2021_03_01.xls'),
         locator_path=Path(r'C:\temp\locators\AGRC_CompositeLocator.loc'),
-        hex_fc_path=Path(r'C:\gis\Projects\Maps2020\Maps2020.gdb\StateHex_5sqmi_planar'),
+        hex_fc_path=Path(r'C:\gis\Projects\Maps2020\Maps2020.gdb\StateHex_5mi_UTM'),
         project_path=Path(r'A:\telework_survey\auto\upload_project\upload_project.aprx'),
         scratch_gdb=Path(r'A:\telework_survey\auto\scratch.gdb'),
         working_dir_path=Path(r'A:\telework_survey\auto'),
@@ -464,6 +464,6 @@ if __name__ == '__main__':
     elif argv[1] == 'o':
         one_function_to_rule_them_all(common_info, operator_info)
     elif not argv[1]:
-        print('Must specify a method ("m" or "o").')
+        print('Must specify a method ("w" or "o").')
     else:
         print(f'Method "{argv[1]}" not available.')
