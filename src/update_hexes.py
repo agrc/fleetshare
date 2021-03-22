@@ -8,6 +8,7 @@
 
 import datetime
 from dataclasses import dataclass, field
+from getpass import getpass
 from os.path import join
 from pathlib import Path
 from sys import argv
@@ -389,9 +390,13 @@ def one_function_to_rule_them_all(common_info: CommonInfo, specific_info: Specif
     '''
 
     print('Getting AGOL references...')
-    gis = arcgis.gis.GIS(common_info.portal, common_info.username)
+    password = getpass('Enter Password: ')
+    gis = arcgis.gis.GIS(common_info.portal, common_info.username, password)
     sd_item = gis.content.get(specific_info.sd_itemid)
     fs_item = gis.content.get(specific_info.fs_itemid)
+
+    #: Because Pro signs itself out randomly...
+    arcpy.SignInToPortal(arcpy.GetActivePortalURL(), common_info.username, password)
 
     print('Cleaning up scratch areas...')
     if arcpy.Exists(str(common_info.scratch_gdb)):
