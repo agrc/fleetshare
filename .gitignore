@@ -1,6 +1,7 @@
 #: Secrets file
 fleetshare_secrets.py
 known_hosts
+hex_secrets.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
