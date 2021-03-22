@@ -6,6 +6,7 @@
         (arcpy.SummarizeWithin _really_ does not like to be called twice in the same script)
 '''
 
+import datetime
 from dataclasses import dataclass, field
 from os.path import join
 from pathlib import Path
@@ -27,6 +28,7 @@ class SpecificInfo:
     sd_itemid: str
     fs_itemid: str
     fs_name: str
+    description: str
     simple_summary: bool = field(init=False)
 
     def __post_init__(self):
@@ -286,13 +288,13 @@ def symbolize_new_layer(new_data, template_layer, output_layer_file):
     arcpy.management.SaveToLayerFile(new_layer, output_layer_file)
 
 
-def add_layer_to_map(project_path, map_name, lyrx_file):
-    '''Add lyrx_file to map_name in project_path, return the map and layer objects for future sharing
+def add_layer_to_map(project_path, map_name, feature_class_path):
+    '''Add feature_class_path to map_name in project_path, return the map and layer objects for future sharing
 
     Args:
         project_path (str): Path to the .aprx project file
         map_name (str): Name of the desired map within the project
-        lyrx_file (str): Path to the .lyrx file to add to the map
+        feature_class_path (str): Path to the feature class to add to the map
 
     Returns:
         (arcpy.mp.Layer, arcpy.mp.Map): Tuple of layer and map objects.
@@ -306,25 +308,26 @@ def add_layer_to_map(project_path, map_name, lyrx_file):
         sharing_map.removeLayer(layer)
         project.save()
 
-    print(f'Adding {lyrx_file} as layer to {sharing_map.name}...')
-    layer = sharing_map.addDataFromPath(lyrx_file)
+    print(f'Adding {feature_class_path} as layer to {sharing_map.name}...')
+    layer = sharing_map.addDataFromPath(feature_class_path)
     project.save()
 
     return layer, sharing_map
 
 
-def update_agol_feature_service(sharing_map, layer, feature_service_name, sd_item, feature_layer_item):
+def update_agol_feature_service(sharing_map, layer, sd_item, feature_layer_item, specific_info):
     '''Helper method for updating an AGOL hosted feature service from an ArcGIS Pro arcpy.mp.Map and .Layer objects.
 
     Args:
         sharing_map (arcpy.mp.Map): Map object containing the layer to be shared.
         layer (arcpy.mp.Layer): Layer object created from the feature class that holds your new data.
-        feature_service_name (str): Name of the existing Hosted Feature Service. Must match exactly, otherwise the publish step will fail.
         sd_item (arcgis.Item): Service definition item on AGOL originally used to publish the hosted feature service.
-        feature_layer_item (arcgis.Item): Target feature service AGOL item
+        feature_layer_item (arcgis.Item): Target feature service AGOL item.
+        specific_info (SpecificInfo): Information about this particular run. NOTE: specific_info.fs_name must match the
+            existing feature service name exactly or the update will fail.
     '''
 
-    sddraft_path = join(arcpy.env.scratchFolder, f'{feature_service_name.replace(" ", "_")}.sddraft')
+    sddraft_path = join(arcpy.env.scratchFolder, f'{specific_info.fs_name.replace(" ", "_")}.sddraft')
     sd_path = sddraft_path[:-5]
     for item in [sddraft_path, sd_path]:
         if arcpy.Exists(item):
@@ -336,13 +339,13 @@ def update_agol_feature_service(sharing_map, layer, feature_service_name, sd_ite
         'title': feature_layer_item.title,
         'tags': feature_layer_item.tags,
         'snippet': feature_layer_item.snippet,
-        'description': feature_layer_item.description,
+        'description': specific_info.description,
         'accessInformation': feature_layer_item.accessInformation
     }
     thumbnail = feature_layer_item.download_thumbnail()
 
-    print(f'Creating SD for {feature_service_name}...')
-    sharing_draft = sharing_map.getWebLayerSharingDraft('HOSTING_SERVER', 'FEATURE', feature_service_name, [layer])
+    print(f'Creating SD for {specific_info.fs_name}...')
+    sharing_draft = sharing_map.getWebLayerSharingDraft('HOSTING_SERVER', 'FEATURE', specific_info.fs_name, [layer])
     sharing_draft.exportToSDDraft(sddraft_path)
     arcpy.server.StageService(sddraft_path, sd_path)
     print(f'Updating service definition...')
@@ -428,7 +431,7 @@ def one_function_to_rule_them_all(common_info: CommonInfo, specific_info: Specif
         str(common_info.project_path), common_info.map_name, str(common_info.trimmed_hex_fc_path)
     )
 
-    update_agol_feature_service(sharing_map, sharing_layer, specific_info.fs_name, sd_item, fs_item)
+    update_agol_feature_service(sharing_map, sharing_layer, sd_item, fs_item, specific_info)
 
 
 if __name__ == '__main__':
@@ -451,6 +454,10 @@ if __name__ == '__main__':
         sd_itemid=secrets.WFH_SD_ITEMID,
         fs_itemid=secrets.WFH_FS_ITEMID,
         fs_name=secrets.WFH_FS_NAME,
+        description=(
+            f'Last Updated: {datetime.datetime.today().strftime("%d %b %Y")}<br />'
+            'WFH locations per 5 sq mile hex (two locations or more).'
+        )
     )
 
     operator_info = SpecificInfo(
@@ -459,6 +466,10 @@ if __name__ == '__main__':
         sd_itemid=secrets.OPERATOR_SD_ITEMID,
         fs_itemid=secrets.OPERATOR_FS_ITEMID,
         fs_name=secrets.OPERATOR_FS_NAME,
+        description=(
+            f'Last Updated: {datetime.datetime.today().strftime("%d %b %Y")}<br />'
+            'Approved operator locations per 5 sq mile hex (two locations or more). Data from Fleet.'
+        )
     )
 
     if len(argv) != 2:
