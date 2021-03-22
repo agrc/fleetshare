@@ -17,6 +17,8 @@ import pandas as pd
 import arcpy
 import arcgis
 
+import hex_secrets as secrets
+
 
 @dataclass
 class SpecificInfo:
@@ -432,38 +434,40 @@ def one_function_to_rule_them_all(common_info: CommonInfo, specific_info: Specif
 if __name__ == '__main__':
 
     common_info = CommonInfo(
-        employee_data_path=Path(r'A:\monthly_data\2021_03_01.xls'),
-        locator_path=Path(r'C:\temp\locators\AGRC_CompositeLocator.loc'),
-        hex_fc_path=Path(r'C:\gis\Projects\Maps2020\Maps2020.gdb\StateHex_5mi_UTM'),
-        project_path=Path(r'A:\telework_survey\auto\upload_project\upload_project.aprx'),
-        scratch_gdb=Path(r'A:\telework_survey\auto\scratch.gdb'),
-        working_dir_path=Path(r'A:\telework_survey\auto'),
-        map_name='UploadMap',
-        portal='https://utah.maps.arcgis.com',
-        username='Jake.Adams@UtahAGRC',
+        employee_data_path=secrets.EMPLOYEE_DATA_PATH,
+        locator_path=secrets.LOCATOR_PATH,
+        hex_fc_path=secrets.HEX_FC_PATH,
+        project_path=secrets.PROJECT_PATH,
+        scratch_gdb=secrets.SCRATCH_GDB,
+        working_dir_path=secrets.WORKING_DIR_PATH,
+        map_name=secrets.MAP_NAME,
+        portal=secrets.AGOL_PORTAL,
+        username=secrets.AGOL_USERNAME,
     )
 
     wfh_info = SpecificInfo(
         method='wfh',
-        data_source=Path(r'A:\telework_survey\wfh_reports'),
-        sd_itemid='74bc74a422c04894a7a07d9a9b30712e',
-        fs_itemid='8fdac662e45041bab24fd75d09f02626',
-        fs_name='wfh_eins_20210127_5mihex_2more',
+        data_source=secrets.WFH_DATA_SOURCE_PATH,
+        sd_itemid=secrets.WFH_SD_ITEMID,
+        fs_itemid=secrets.WFH_FS_ITEMID,
+        fs_name=secrets.WFH_FS_NAME,
     )
 
     operator_info = SpecificInfo(
         method='operator',
-        data_source=Path(r"A:\telework_survey\Operators.xlsx"),
-        sd_itemid='11777ebe8fff43beb2485b3a7c83573b',
-        fs_itemid='93e0e4f20b48426881c17d7ff8ce0874',
-        fs_name='operator_eins_20210127_5mihex_test_2more',
+        data_source=secrets.OPERATOR_DATA_SOURCE_PATH,
+        sd_itemid=secrets.OPERATOR_SD_ITEMID,
+        fs_itemid=secrets.OPERATOR_FS_ITEMID,
+        fs_name=secrets.OPERATOR_FS_NAME,
     )
 
-    if argv[1] == 'w':
+    if len(argv) != 2:
+        print(
+            'Syntax: `python update_hexes.py <method>`, where method is either "w" for WFH or "o" for Approved Operators'
+        )
+    elif argv[1] == 'w':
         one_function_to_rule_them_all(common_info, wfh_info)
     elif argv[1] == 'o':
         one_function_to_rule_them_all(common_info, operator_info)
-    elif not argv[1]:
-        print('Must specify a method ("w" or "o").')
     else:
         print(f'Method "{argv[1]}" not available.')
