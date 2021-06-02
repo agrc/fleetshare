@@ -39,7 +39,7 @@ Usage:
 
 (arcpy.SummarizeWithin _really_ does not like to be called twice in the same script)
 
-SummarizeWithin() seems to be very sensitive to data in %localappdata%\temp. If it fails with a 999999 error, clear that out. This may also be a hint for running it twice in the same script.
+SummarizeWithin() seems to be very sensitive to data in %localappdata%\temp. If it fails with a 999999 error, or a `RuntimeError: cannot open 'path\to\scratch.gdb\within_table'`, clear that out. This may also be a hint for running it twice in the same script.
 
 #### known_hosts
 
