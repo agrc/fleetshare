@@ -66,6 +66,13 @@ class CommonInfo:
         self.trimmed_hex_fc_path = self.scratch_gdb / 'trimmed_hexes'
 
 
+def clean_field_name(name):
+    name = name.replace(' ', '_')
+    name = name.replace('&', '_')
+    name = name.replace('`', '_')  #: "GOVERNOR`S" — Why???
+    return name
+
+
 def get_wfh_eins(report_dir_path, monthly_dhrm_data, output_csv_path):
     '''Create a csv of the employee data that have matching records in the WFH survey
 
@@ -247,7 +254,7 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
     print('Writing output data...')
     #: Write our new data to the output feature class
     insert_fields = ['Join_ID']
-    insert_fields.extend([name.replace(' ', '_') for name in all_departments])
+    insert_fields.extend([clean_field_name(name) for name in all_departments])
     with arcpy.da.UpdateCursor(output_fc, insert_fields) as updater:
         for row in updater:
             join_id = row[0]
