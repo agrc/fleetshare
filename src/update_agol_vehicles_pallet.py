@@ -149,7 +149,15 @@ class AGOLVehiclesPallet(Pallet):
             sftp.get_d('upload', temp_csv_dir, preserve_mtime=True)
 
         #: Get the latest file
-        source_path, source_date = self.get_latest_csv(temp_csv_dir, previous_days=7)
+        source_path = None
+        source_date = None
+
+        try:
+            source_path, source_date = self.get_latest_csv(temp_csv_dir, previous_days=7)
+        except Exception as exception:
+            self.status = (False, exception)
+
+            return
 
         self.log.info(f'Converting {source_path} to feature class {temp_fc_path}...')
         wgs84 = arcpy.SpatialReference(4326)
