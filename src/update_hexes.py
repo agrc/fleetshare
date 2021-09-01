@@ -67,9 +67,9 @@ class CommonInfo:
 
 
 def clean_field_name(name):
-    name = name.replace(' ', '_')
-    name = name.replace('&', '_')
-    name = name.replace('`', '_')  #: "GOVERNOR`S" — Why???
+    bad_chars = [' ', '&', '`', '-']
+    for char in bad_chars:
+        name = name.replace(char, '_')
     return name
 
 
