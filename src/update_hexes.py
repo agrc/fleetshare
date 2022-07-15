@@ -9,9 +9,11 @@
 import datetime
 from dataclasses import dataclass, field
 from getpass import getpass
-from os.path import join
+import logging
+# from os.path import join
 from pathlib import Path
 from sys import argv
+import sys
 
 import numpy as np
 import pandas as pd
@@ -192,7 +194,7 @@ def _geocode_points_with_palletjack(points_csv, out_fc, addr_field, zone_field):
 
     print('Copying out only the matched points...')
     valid_geocoded_df = geocoded_df[geocoded_df['score'] > 70].copy()
-    valid_geocoded_df.to_featureclass(out_fc)
+    valid_geocoded_df.spatial.to_featureclass(out_fc)
 
 
 def get_operator_eins(operators_path, monthly_dhrm_data, output_csv_path):
@@ -417,6 +419,26 @@ def one_function_to_rule_them_all(common_info: CommonInfo, specific_info: Specif
     Raises:
         NotImplementedError: If a method other than 'wfh' or 'operator' is provided
     '''
+
+    #: Set up logging
+    logger = logging.getLogger('hexes')
+    logger.setLevel(logging.DEBUG)
+    palletjack_logger = logging.getLogger('palletjack')
+    palletjack_logger.setLevel(logging.DEBUG)
+
+    cli_handler = logging.StreamHandler(sys.stdout)
+    cli_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        fmt='%(levelname)-7s %(asctime)s %(name)15s:%(lineno)5s %(message)s', datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    cli_handler.setFormatter(formatter)
+    logger.addHandler(cli_handler)
+    palletjack_logger.addHandler(cli_handler)
+
+    #: Log any warnings at logging.WARNING
+    #: Put after everything else to prevent creating a duplicate, default formatter
+    #: (all log messages were duplicated if put at beginning)
+    logging.captureWarnings(True)
 
     print('Getting AGOL references...')
     password = getpass('Enter Password: ')
