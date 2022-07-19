@@ -166,7 +166,7 @@ def geocode_points(points_csv, out_fc, locator, addr_field, zip_field):
     if arcpy.Exists(geocode_fc):
         arcpy.management.Delete(geocode_fc)
 
-    fields_str = f"'Street or Intersection' {addr_field} VISIBLE NONE;'City or Placename' <None> VISIBLE NONE;'ZIP Code' {zip_field} VISIBLE NONE"
+    fields_str = f"'Address or Place' {addr_field} VISIBLE NONE;Address2 <None> VISIBLE NONE;Address3 <None> VISIBLE NONE;Neighborhood <None> VISIBLE NONE;City <None> VISIBLE NONE;County <None> VISIBLE NONE;State <None> VISIBLE NONE;ZIP {zip_field} VISIBLE NONE;ZIP4 <None> VISIBLE NONE;Country <None> VISIBLE NONE"
     print(f'\nGeocoding {points_csv} (this could take a while)...')
     geocode_results = arcpy.geocoding.GeocodeAddresses(points_csv, locator, fields_str, geocode_fc)
 
