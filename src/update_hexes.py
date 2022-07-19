@@ -76,13 +76,12 @@ def clean_field_name(name):
     return name
 
 
-def get_wfh_eins(report_dir_path, monthly_dhrm_data, output_csv_path):
+def get_wfh_eins(report_dir_path, monthly_dhrm_data):
     '''Create a csv of the employee data that have matching records in the WFH survey
 
     Args:
         report_dir_path (Path): directory of non-cumulative csvs of the WFH survey data
         monthly_dhrm_data (DataFrame): monthly employee data
-        output_csv_path (Path): output csv file
     '''
 
     print(f'\nReading WFH surveys from {report_dir_path}...')
@@ -108,13 +107,12 @@ def get_wfh_eins(report_dir_path, monthly_dhrm_data, output_csv_path):
     wfh_eins_int = wfh_eins_int.drop_duplicates()
 
     #: "join" by only including rows where EINint is in series of EINs from WFH survey
-    wfh_records = monthly_dhrm_data[monthly_dhrm_data['EINint'].isin(wfh_eins_int)]
+    wfh_records_dataframe = monthly_dhrm_data[monthly_dhrm_data['EINint'].isin(wfh_eins_int)]
     print(
-        f'Employee records with matching EIN in WFH survey: {wfh_records.shape[0]} (out of {wfh_eins_int.count()} EINs from survey)'
+        f'Employee records with matching EIN in WFH survey: {len(wfh_records_dataframe.index)} (out of {wfh_eins_int.count()} EINs from survey)'
     )
 
-    print(f'Saving output data to {output_csv_path}...')
-    wfh_records.to_csv(output_csv_path)
+    return wfh_records_dataframe
 
 
 def get_dhrm_dataframe(monthly_employee_data_path):
@@ -152,65 +150,73 @@ def get_dhrm_dataframe(monthly_employee_data_path):
     return monthly_df
 
 
-# def geocode_points(points_csv, out_fc, locator, addr_field, zip_field):
-#     '''Geocode the points_csv, only saving the points that have a valid match to out_fc
+def geocode_points(points_csv, out_fc, locator, addr_field, zip_field):
+    '''Geocode the points_csv, only saving the points that have a valid match to out_fc
 
-#     Args:
-#         points_csv (str): The csv holding the points
-#         out_fc (str): The feature class to save the geocoded points
-#         locator (str): The full path to the geolocator to use
-#         addr_field (str): The address field in points_csv
-#         zip_field (str): The zip code field in points_csv
-#     '''
+    Args:
+        points_csv (str): The csv holding the points
+        out_fc (str): The feature class to save the geocoded points
+        locator (str): The full path to the geolocator to use
+        addr_field (str): The address field in points_csv
+        zip_field (str): The zip code field in points_csv
+    '''
 
-#     #: using 'memory' seems to limit the geocode to 1000, use 'in_memory' instead.
-#     geocode_fc = r'in_memory\temp_geocode_fc'
+    #: using 'memory' seems to limit the geocode to 1000, use 'in_memory' instead.
+    geocode_fc = r'in_memory\temp_geocode_fc'
 
-#     if arcpy.Exists(geocode_fc):
-#         arcpy.management.Delete(geocode_fc)
+    if arcpy.Exists(geocode_fc):
+        arcpy.management.Delete(geocode_fc)
 
-#     fields_str = f"'Street or Intersection' {addr_field} VISIBLE NONE;'City or Placename' <None> VISIBLE NONE;'ZIP Code' {zip_field} VISIBLE NONE"
-#     print(f'\nGeocoding {points_csv} (this could take a while)...')
-#     geocode_results = arcpy.geocoding.GeocodeAddresses(points_csv, locator, fields_str, geocode_fc)
+    fields_str = f"'Address or Place' {addr_field} VISIBLE NONE;Address2 <None> VISIBLE NONE;Address3 <None> VISIBLE NONE;Neighborhood <None> VISIBLE NONE;City <None> VISIBLE NONE;County <None> VISIBLE NONE;State <None> VISIBLE NONE;ZIP {zip_field} VISIBLE NONE;ZIP4 <None> VISIBLE NONE;Country <None> VISIBLE NONE"
+    print(f'\nGeocoding {points_csv} (this could take a while)...')
+    geocode_results = arcpy.geocoding.GeocodeAddresses(points_csv, locator, fields_str, geocode_fc)
 
-#     print(geocode_results.getMessages())
+    # arcpy.geocoding.GeocodeAddresses(r"A:\telework_survey\auto\ein_records.csv", r"C:\temp\locators\new\v101\ugrc_composite_locator.loc", "'Address or Place' real_addr VISIBLE NONE;Address2 <None> VISIBLE NONE;Address3 <None> VISIBLE NONE;Neighborhood <None> VISIBLE NONE;City <None> VISIBLE NONE;County <None> VISIBLE NONE;State <None> VISIBLE NONE;ZIP real_zip VISIBLE NONE;ZIP4 <None> VISIBLE NONE;Country <None> VISIBLE NONE", r"C:\gis\Projects\Maps2020\Maps2020.gdb\locator_test_GeocodeAddresses", "STATIC", None, '', None, "ALL")
 
-#     print('Copying out only the matched points...')
-#     query = "Status = 'M'"
+    print(geocode_results.getMessages())
 
-#     if arcpy.Exists(geocode_fc):
-#         arcpy.management.Delete('geocode_layer')
+    print('Copying out only the matched points...')
+    query = "Status = 'M'"
 
-#     arcpy.management.MakeFeatureLayer(geocode_fc, 'geocode_layer', query)
-#     arcpy.management.CopyFeatures('geocode_layer', out_fc)
+    if arcpy.Exists(geocode_fc):
+        arcpy.management.Delete('geocode_layer')
+
+    arcpy.management.MakeFeatureLayer(geocode_fc, 'geocode_layer', query)
+    arcpy.management.CopyFeatures('geocode_layer', out_fc)
 
 
-def _geocode_points_with_palletjack(points_csv, out_fc, addr_field, zone_field):
-    points_df = pd.read_csv(points_csv)
+def _geocode_points_with_palletjack(points_df, out_fc, addr_field, zone_field):
+    # points_df = pd.read_csv(points_csv)
     geocoder = palletjack.transform.APIGeocoder(secrets.API_KEY)
 
-    print(f'\nGeocoding {points_csv} (this could take a while)...')
+    print('\nGeocoding addresses (this could take a while)...')
     geocoded_df = geocoder.geocode_dataframe(points_df, addr_field, zone_field, 26912)
 
     print('Copying out only the matched points...')
     valid_geocoded_df = geocoded_df[geocoded_df['score'] > 70].copy()
-    valid_geocoded_df.spatial.to_featureclass(out_fc)
+    valid_geocoded_df.spatial.to_featureclass(out_fc, sanitize_columns=True)
 
 
-def get_operator_eins(operators_path, monthly_dhrm_data, output_csv_path):
+def get_operator_eins(operators_path, monthly_dhrm_data):
     '''Read and process approved operator data
+
+    Performs an inner join between the operators data and the DHRM data based on the EIN
 
     Args:
         operators_path (Path): xlsx of approved operators from Fleet
         monthly_dhrm_data (DataFrame): Monthly DHRM data
-        out_path (Path): output csv file
+
+    Returns:
+        pd.DataFrame: Operators dataframe with DHRM info added
     '''
     print(f'\nReading approved operator data {operators_path}...')
     operators_df = pd.read_excel(operators_path, engine='openpyxl')
     cleaned_operators = operators_df[(operators_df['EIN'] >= 100000) & (operators_df['EIN'] <= 999999)]
-    op_merged = pd.merge(monthly_dhrm_data, cleaned_operators, how='inner', left_on='EINint', right_on='EIN')
-    print(f'Saving output data to {output_csv_path}...')
-    op_merged.to_csv(output_csv_path)
+    operators_merged_dataframe = pd.merge(
+        monthly_dhrm_data, cleaned_operators, how='inner', left_on='EINint', right_on='EIN'
+    )
+
+    return operators_merged_dataframe
 
 
 def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
@@ -241,7 +247,7 @@ def hex_bin(points_fc, hex_fc, output_fc, simple_count=True, within_table=None):
         points_fc,
         output_fc,
         keep_all_polygons='ONLY_INTERSECTING',
-        group_field='USER_DEPT_NAME',
+        group_field='DEPT_NAME',  #: I think the esri geocode or something added the 'USER_' prefix
         out_group_table=within_table
     )
 
@@ -291,95 +297,6 @@ def remove_single_count_hexes(input_hex_fc, output_hex_fc):
     query = "Point_Count > 1"
     arcpy.management.MakeFeatureLayer(input_hex_fc, 'hex_layer', query)
     arcpy.management.CopyFeatures('hex_layer', output_hex_fc)
-
-
-#: Unused?
-# def symbolize_new_layer(new_data, template_layer, output_layer_file):
-#     '''Create a .lyrx file from new_data symbolized according to template_layer
-
-#     Args:
-#         new_data (str): Path to new data
-#         template_layer (str): Path to layer file symbolized according to desired output
-#         output_layer_file (str): Output path for new .lyrx file.
-#     '''
-
-#     if arcpy.Exists(output_layer_file):
-#         print(f'Removing existing layer file {output_layer_file}...')
-#         arcpy.management.Delete(output_layer_file)
-
-#     print(f'Symbolizing layer based on {template_layer}...')
-#     new_layer = arcpy.management.ApplySymbologyFromLayer(new_data, template_layer, update_symbology='UPDATE')
-#     arcpy.management.SaveToLayerFile(new_layer, output_layer_file)
-
-#: Unused now
-# def add_layer_to_map(project_path, map_name, feature_class_path):
-#     '''Add feature_class_path to map_name in project_path, return the map and layer objects for future sharing
-
-#     Args:
-#         project_path (str): Path to the .aprx project file
-#         map_name (str): Name of the desired map within the project
-#         feature_class_path (str): Path to the feature class to add to the map
-
-#     Returns:
-#         (arcpy.mp.Layer, arcpy.mp.Map): Tuple of layer and map objects.
-#     '''
-
-#     print(f'Getting {map_name} from {project_path}...')
-#     project = arcpy.mp.ArcGISProject(project_path)
-#     sharing_map = project.listMaps(map_name)[0]
-#     for layer in sharing_map.listLayers():
-#         print(f'Removing {layer} from {sharing_map.name}...')
-#         sharing_map.removeLayer(layer)
-#         project.save()
-
-#     print(f'Adding {feature_class_path} as layer to {sharing_map.name}...')
-#     layer = sharing_map.addDataFromPath(feature_class_path)
-#     project.save()
-
-#     return layer, sharing_map
-
-#: Unused now
-# def update_agol_feature_service(sharing_map, layer, sd_item, feature_layer_item, specific_info):
-#     '''Helper method for updating an AGOL hosted feature service from an ArcGIS Pro arcpy.mp.Map and .Layer objects.
-
-#     Args:
-#         sharing_map (arcpy.mp.Map): Map object containing the layer to be shared.
-#         layer (arcpy.mp.Layer): Layer object created from the feature class that holds your new data.
-#         sd_item (arcgis.Item): Service definition item on AGOL originally used to publish the hosted feature service.
-#         feature_layer_item (arcgis.Item): Target feature service AGOL item.
-#         specific_info (SpecificInfo): Information about this particular run. NOTE: specific_info.fs_name must match the
-#             existing feature service name exactly or the update will fail.
-#     '''
-
-#     sddraft_path = join(arcpy.env.scratchFolder, f'{specific_info.fs_name.replace(" ", "_")}.sddraft')
-#     sd_path = sddraft_path[:-5]
-#     for item in [sddraft_path, sd_path]:
-#         if arcpy.Exists(item):
-#             print(f'Deleting {item} prior to use...')
-#             arcpy.Delete_management(item)
-
-#     #: Get item info that can get overwritten
-#     item_information = {
-#         'title': feature_layer_item.title,
-#         'tags': feature_layer_item.tags,
-#         'snippet': feature_layer_item.snippet,
-#         'description': specific_info.description,
-#         'accessInformation': feature_layer_item.accessInformation
-#     }
-#     thumbnail = feature_layer_item.download_thumbnail()
-
-#     print(f'Creating SD for {specific_info.fs_name}...')
-#     sharing_draft = sharing_map.getWebLayerSharingDraft('HOSTING_SERVER', 'FEATURE', specific_info.fs_name, [layer])
-#     sharing_draft.exportToSDDraft(sddraft_path)
-#     arcpy.server.StageService(sddraft_path, sd_path)
-#     print(f'Updating service definition...')
-#     sd_item.update(data=sd_path)
-#     print(f'Publishing service definition...')
-#     sd_item.publish(overwrite=True)
-
-#     #: Reapply item info
-#     print('Resetting all of the stuff that publishing breaks...')
-#     feature_layer_item.update(item_information, thumbnail=thumbnail)
 
 
 def get_item(portal, username, item_id, password=None):
@@ -459,9 +376,9 @@ def one_function_to_rule_them_all(common_info: CommonInfo, specific_info: Specif
     dhrm_data = get_dhrm_dataframe(common_info.employee_data_path)
 
     if specific_info.method == 'wfh':
-        get_wfh_eins(specific_info.data_source, dhrm_data, common_info.csv_path)
+        eins_dataframe = get_wfh_eins(specific_info.data_source, dhrm_data)
     elif specific_info.method == 'operator':
-        get_operator_eins(specific_info.data_source, dhrm_data, common_info.csv_path)
+        eins_dataframe = get_operator_eins(specific_info.data_source, dhrm_data)
     else:
         raise NotImplementedError(f'Method {specific_info.method} not recognized...')
 
@@ -473,9 +390,7 @@ def one_function_to_rule_them_all(common_info: CommonInfo, specific_info: Specif
     #     'real_zip',
     # )
 
-    _geocode_points_with_palletjack(
-        str(common_info.csv_path), str(common_info.geocoded_points_path), 'real_addr', 'real_zip'
-    )
+    _geocode_points_with_palletjack(eins_dataframe, str(common_info.geocoded_points_path), 'real_addr', 'real_zip')
 
     hex_bin(
         str(common_info.geocoded_points_path),
